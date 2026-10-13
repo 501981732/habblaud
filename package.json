@@ -44,6 +44,7 @@
     "dsh:install": "node --import tsx scripts/dsh-install.ts install",
     "dsh:uninstall": "node --import tsx scripts/dsh-install.ts uninstall",
     "dsh:status": "node --import tsx scripts/dsh-install.ts status",
+    "pretest:installers": "npm run build:integrations",
     "test:installers": "node --import tsx --test scripts/dsh-install.test.ts",
     "release": "tsx scripts/release.ts"
   },
