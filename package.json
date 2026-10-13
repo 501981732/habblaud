@@ -11,7 +11,7 @@
   "homepage": "https://github.com/marmottajr/habblaud#readme",
   "type": "module",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "dev": "tsx watch --clear-screen=false --exclude './client/**' server/index.ts --dev",

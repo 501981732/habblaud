@@ -16,6 +16,7 @@
 - DeepSeek Harness 通过原生 Cordis 插件接入实时状态、解码历史、消息与审批。桥接使用本机私有令牌，断线审批回退 DSH Web UI；模型名称单独展示，DSH 中的 GLM 不再需要伪装成 Claude 或 Codex。
 - Pi 通过原生 extension 接入会话、工具、对话与消息；冷历史读取 session JSONL 的当前分支。Pi 工具审批需主动设置 `HABBLAUD_PI_APPROVALS=1`，失败、取消或失联不会自动批准。
 - 保留 Claude Code 与 Codex 原有文件读取、插件、hooks、消息和历史路径；旧记录缺少 provider 时继续按 Claude Code 解释。原生桥接加入事件去重、实例替换、来源能力声明和有界私有历史缓存。
+- 最低 Node.js 版本调整为 22.19.0，以满足 Pi SDK 依赖要求；CI 使用同一最低版本完成检查。
 
 ## [0.8.0] - 2026-10-09
 

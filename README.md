@@ -5,7 +5,7 @@
 <p align="center"><b>把 Claude Code、Codex、DeepSeek Harness 和 Pi 的本机 Agent 放进同一座像素办公室。</b><br />一个项目一间房，一个会话一个角色，实时看到谁在工作、等待你回应，或已经完成。</p>
 
 <p align="center">
-  <img alt="Node.js 22.12+" src="https://img.shields.io/badge/Node.js-%E2%89%A522.12-5fa04e?logo=node.js&logoColor=white" />
+  <img alt="Node.js 22.19+" src="https://img.shields.io/badge/Node.js-%E2%89%A522.19-5fa04e?logo=node.js&logoColor=white" />
   <img alt="默认简体中文" src="https://img.shields.io/badge/%E7%95%8C%E9%9D%A2-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-4aa8e8" />
   <img alt="MIT 许可证" src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-MIT-f08a3c" />
 </p>
@@ -34,7 +34,7 @@
 
 ## 安装与启动
 
-需要 Node.js **22.12 或更新版**、npm，以及至少一种本机 Agent 运行环境。macOS、Linux 可以直接用 Node；上游 Windows 与 Docker 路径仍保留给 Claude Code / Codex。新原生桥建议先在同一台机器使用 Node 模式。
+需要 Node.js **22.19 或更新版**、npm，以及至少一种本机 Agent 运行环境。Pi SDK 要求 Node.js ≥22.19.0。macOS、Linux 可以直接用 Node；上游 Windows 与 Docker 路径仍保留给 Claude Code / Codex。新原生桥建议先在同一台机器使用 Node 模式。
 
 ```bash
 git clone https://github.com/501981732/habblaud.git
