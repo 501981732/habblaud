@@ -1,6 +1,6 @@
 # Claude Code 插件
 
-此目录是 Habblaud 的 Claude Code marketplace：仓库根目录的 `.claude-plugin/marketplace.json` 声明三个插件，分别负责观察、审批和消息。主安装流程见 [中文 README](../README.md)；上游葡语细节保留在 [README.pt-BR.md](README.pt-BR.md)。
+此目录是 Habblaud 的 Claude Code marketplace：仓库根目录的 `.claude-plugin/marketplace.json` 声明三个插件，分别负责观察、审批和消息。主安装流程见 [中文 README](../README.zh-CN.md)；葡语技术说明见 [README.pt-BR.md](README.pt-BR.md)。
 
 ```bash
 npm run mod:install
