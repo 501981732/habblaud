@@ -1,6 +1,7 @@
 // Terminal do Codex: linhas sintéticas de rollout (paginated e legacy) viram as entradas do terminal.
 import { describe, expect, it } from 'vitest';
 import type { TerminalEntry } from '../../../shared/types';
+import { localize, setLocale } from '../../../shared/i18n';
 import { R, threadId } from '../../test/codex-fixtures';
 import { createCodexTerminalParser } from './terminal';
 
@@ -31,12 +32,18 @@ describe('terminal do Codex', () => {
     expect(out[1]).toMatchObject({ kind: 'thinking', text: '**Lendo** o projeto' });
     expect(out[2]).toMatchObject({ kind: 'tool', id: 'c1', tool: 'Bash', title: 'Bash(npm test)', input: 'npm test', inputKind: 'command' });
     expect(out[3]).toMatchObject({ kind: 'result', toolUseId: 'c1', error: true, text: 'Código de saída 1\nFAIL src/a.test.ts' });
+    expect(out[3]).toMatchObject({ resultI18n: { key: 'Código de saída {codigo}\n{saida}', params: { codigo: 1, saida: 'FAIL src/a.test.ts' } } });
+    setLocale('zh-CN');
+    expect(localize({ text: (out[3] as Extract<TerminalEntry, { kind: 'result' }>).text, i18n: (out[3] as Extract<TerminalEntry, { kind: 'result' }>).resultI18n })).toBe('退出码 1\nFAIL src/a.test.ts');
     expect(out[4]).toMatchObject({ kind: 'tool', tool: 'Edit', title: 'Edit(src/a.ts)', inputKind: 'diff' });
     expect((out[4] as { input?: string }).input).toContain('+novo');
     expect(out[5]).toMatchObject({ kind: 'tool', tool: 'mcp__github__get_issue', title: 'github - get_issue (MCP)' });
     expect(out[6]).toMatchObject({ kind: 'result', toolUseId: 'm1', text: 'Issue 1: bug' });
     expect(out[7]).toMatchObject({ kind: 'assistant', text: 'Corrigi o **teste**.' });
-    expect(out[8]).toMatchObject({ kind: 'system', text: 'Turno concluído em 1min 5s' });
+    expect(out[8]).toMatchObject({ kind: 'system', text: 'Turno concluído em 1min 5s', i18n: { key: 'Turno concluído em {duracao}', params: { duracao: '1min 5s' } } });
+    setLocale('zh-CN');
+    expect(localize(out[8] as Extract<TerminalEntry, { kind: 'system' }>)).toBe('本轮完成，用时 1min 5s');
+    expect(out[7]).not.toHaveProperty('i18n');
   });
 
   it('saída longa: truncada e marcada; turno interrompido', () => {

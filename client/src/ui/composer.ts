@@ -6,6 +6,8 @@
 // cada agente fica guardado (só na memória) ao trocar de agente. A lógica pura está em ui/composer-model.ts.
 import { MESSAGE_MAX } from '../../../shared/messages';
 import type { AgentInfo, OutboxMessage, Provider } from '../../../shared/types';
+import { t } from '../../../shared/i18n';
+import { agentCan, providerOf } from './provider';
 import {
   canSend,
   composerMode,
@@ -106,7 +108,9 @@ export class MessageComposer {
    */
   render(agent: AgentInfo | undefined, key = agent?.id ?? ''): ComposerMode['kind'] {
     const store = this.ctx.store;
-    const mode = composerMode(agent, {
+    const mode = agent && (agent.provider === 'dsh' || agent.provider === 'pi') && !agentCan(agent, 'messages')
+      ? { kind: 'off' as const, text: 'Este Agent não oferece envio de mensagens.' }
+      : composerMode(agent, {
       enabled: store.mock || !!store.snapshot?.meta.messages,
       local: store.mock || isLocalHostname(location.hostname),
       replaying: store.replaying,
@@ -114,7 +118,7 @@ export class MessageComposer {
     this.mode = mode;
     const ready = mode.kind === 'ready';
     const term = this.variant === 'terminal';
-    this.provider = agent?.provider === 'codex' ? 'codex' : 'claude';
+    this.provider = providerOf(agent);
 
     // Troca de agente (ou a caixa passou a valer/deixou de valer): o conteúdo vem do rascunho guardado.
     const shown = `${key}|${ready}`;
@@ -127,9 +131,9 @@ export class MessageComposer {
     }
     this.box.disabled = !ready;
     const name = agent?.name ?? 'o agente';
-    const placeholder = ready ? (term ? `Mensagem para ${name} (Enter manda, Shift+Enter quebra a linha)` : `Mensagem para ${name}…`) : mode.text;
+    const placeholder = ready ? (term ? t('Mensagem para {name} (Enter manda, Shift+Enter quebra a linha)', { name }) : t('Mensagem para {name}…', { name })) : mode.text;
     setAttr(this.box, 'placeholder', placeholder);
-    setAttr(this.box, 'aria-label', ready ? `Mensagem para ${name}` : mode.text);
+    setAttr(this.box, 'aria-label', ready ? t('Mensagem para {name}', { name }) : mode.text);
     setTitle(this.box, ready ? '' : mode.text);
     this.row.classList.toggle('is-disabled', !ready);
     setHidden(this.sendBtn, !ready);

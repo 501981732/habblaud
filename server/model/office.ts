@@ -11,6 +11,7 @@ import type {
   FeedItem,
   Notice,
   NoticeLevel,
+  MessageRef,
   OfficeSnapshot,
   PermissionDecision,
   PermissionRequestInfo,
@@ -21,7 +22,8 @@ import type {
   TaskItem,
   UpdateStatus,
 } from '../../shared/types';
-import { SHELL_WAIT_TOOL, SPECIAL, type ShellOutcome } from '../../shared/activity';
+import { SHELL_WAIT_TOOL, SPECIAL, waitingReasonI18n, type ShellOutcome } from '../../shared/activity';
+import { productCopy } from '../../shared/copy';
 import { nameKey, type AppearanceParts } from '../../shared/appearance';
 import { DemoSimulator } from '../../shared/demo/simulator';
 import { describeGitHubEvent, githubEventKey, RoomEffects, type GitHubEvent } from '../../shared/github';
@@ -130,6 +132,7 @@ export interface ShellDoneInput {
   /** Id do job (tarefa em segundo plano ou tool_use): torna a atividade idempotente numa releitura. */
   id: string;
   label: string;
+  labelI18n?: MessageRef;
   startedAt: number;
   command?: string;
 }
@@ -341,12 +344,17 @@ export class Office {
       info.custom = true;
       if (chosen.parts) info.parts = { ...chosen.parts };
     }
-    if (p.status === 'waiting') info.waitingFor = p.waitingFor ?? 'responder no terminal';
+    if (p.status === 'waiting') {
+      info.waitingFor = p.waitingFor ?? 'responder no terminal';
+      info.waitingForI18n = waitingReasonI18n(info.waitingFor);
+    }
     const rec: AgentRecord = { info, history: [] };
     if (p.status === 'working') rec.turnStart = now;
     this.agents.set(p.id, rec);
     const acc = this.deps.accountName(p.account);
-    this.notice('arrive', p.id, 'info', `👋 ${info.name} chegou em ${this.roomName(roomId)}${acc ? ` (${acc})` : ''}`, roomId);
+    this.notice('arrive', p.id, 'info', `👋 ${info.name} chegou em ${this.roomName(roomId)}${acc ? ` (${acc})` : ''}`, roomId, {
+      i18n: acc ? productCopy('👋 {agente} chegou em {sala} ({conta})', { agente: info.name, sala: this.roomName(roomId), conta: acc }).i18n : productCopy('👋 {agente} chegou em {sala}', { agente: info.name, sala: this.roomName(roomId) }).i18n,
+    });
     this.markDirty();
   }
 
@@ -371,28 +379,35 @@ export class Office {
     this.markDirty();
   }
 
-  setStatus(id: string, status: AgentStatus, waitingFor?: string): void {
+  setStatus(id: string, status: AgentStatus, waitingFor?: string, waitingForI18n?: MessageRef): void {
     const rec = this.agents.get(id);
     if (!rec) return;
     const info = rec.info;
     const prev = info.status;
     const reason = status === 'waiting' ? (waitingFor ?? 'responder no terminal') : undefined;
-    if (prev === status && info.waitingFor === reason) return;
+    const reasonI18n = reason ? (waitingForI18n ?? waitingReasonI18n(reason)) : undefined;
+    if (prev === status && info.waitingFor === reason && JSON.stringify(info.waitingForI18n) === JSON.stringify(reasonI18n)) return;
     const now = this.now();
     if (prev !== status) {
       info.status = status;
       info.statusSince = now;
     }
-    if (reason) info.waitingFor = reason;
-    else delete info.waitingFor;
+    if (reason) {
+      info.waitingFor = reason;
+      info.waitingForI18n = reasonI18n;
+    } else {
+      delete info.waitingFor;
+      delete info.waitingForI18n;
+    }
     const room = this.roomName(info.roomId);
 
     if (status === 'working' && (prev === 'idle' || prev === 'shell' || rec.turnStart === undefined)) rec.turnStart = now;
     if (status === 'shell' && prev !== 'shell') {
       // Terminou o turno com shell(s) rodando: o balão (fillShellActivity) e o aviso falam da espera, não de "concluiu".
-      const { label } = this.shellSummary(rec);
+      const { label, labelI18n } = this.shellSummary(rec);
       this.notice('shell', id, 'info', `⏳ ${info.name} está esperando o shell em ${room}${label ? `: ${label}` : ''}`, info.roomId, {
         dedupeMs: SHELL_NOTICE_DEDUPE_MS,
+        i18n: label && !labelI18n ? productCopy('⏳ {agente} está esperando o shell em {sala}: {rotulo}', { agente: info.name, sala: room, rotulo: label }).i18n : productCopy('⏳ {agente} está esperando o shell em {sala}', { agente: info.name, sala: room }).i18n,
       });
     }
     if (prev === 'shell' && status !== 'shell' && rec.shellWait) {
@@ -407,7 +422,7 @@ export class Office {
         this.addActivity(id, act, true);
         rec.synthWait = prevActivity ? { id: act.id, prev: prevActivity } : { id: act.id };
       }
-      this.notice('wait', id, 'alert', `✋ ${info.name} precisa de você em ${room}: ${reason}`, info.roomId);
+      this.notice('wait', id, 'alert', `✋ ${info.name} precisa de você em ${room}: ${reason}`, info.roomId, { i18n: waitingReasonI18n(reason) ? productCopy(`✋ {agente} precisa de você em {sala}: ${reason}`, { agente: info.name, sala: room }).i18n : productCopy('✋ {agente} precisa de você em {sala}: {motivo}', { agente: info.name, sala: room, motivo: reason ?? '' }).i18n });
     }
     if (prev === 'waiting' && status !== 'waiting' && rec.synthWait) {
       // Saiu da espera sem nada novo no transcript: volta a mostrar o que estava fazendo.
@@ -423,7 +438,7 @@ export class Office {
         this.addActivity(id, act, true);
         rec.synthDone = { id: act.id, at: now };
       }
-      this.notice('done', id, 'success', `✅ ${info.name} concluiu em ${room}`, info.roomId);
+      this.notice('done', id, 'success', `✅ ${info.name} concluiu em ${room}`, info.roomId, { i18n: productCopy('✅ {agente} concluiu em {sala}', { agente: info.name, sala: room }).i18n });
     }
     this.markDirty();
   }
@@ -470,8 +485,8 @@ export class Office {
     const rec = this.agents.get(id);
     if (!rec || rec.info.status !== 'shell') return;
     const info = rec.info;
-    const { label, count, detail } = this.shellSummary(rec);
-    const desc = SPECIAL.waitingShell(label, count, detail);
+    const { label, labelI18n, count, detail } = this.shellSummary(rec);
+    const desc = SPECIAL.waitingShell(label, count, detail, labelI18n);
     const cur = info.activity;
     const mine = cur?.tool === SHELL_WAIT_TOOL;
     if (mine && cur.text === desc.text) return;
@@ -488,20 +503,24 @@ export class Office {
    * Um shell em segundo plano terminou: atividade 'ShellDone' (o mundo comemora; `error` = falhou/morto)
    * e aviso de sucesso/falha. `live: false` = releitura do passado (só histórico, sem aviso).
    */
-  shellDone(id: string, job: ShellDoneInput, outcome: ShellOutcome, at: number, opts: { live?: boolean; summary?: string } = {}): void {
+  shellDone(id: string, job: ShellDoneInput, outcome: ShellOutcome, at: number, opts: { live?: boolean; summary?: string; summaryI18n?: MessageRef } = {}): void {
     const rec = this.agents.get(id);
     if (!rec) return;
     const info = rec.info;
     const live = opts.live !== false;
     const ms = Math.max(0, at - job.startedAt);
-    const act: Activity = { id: `${id}#shell-done:${job.id}`, at, ...SPECIAL.shellDone(job.label, outcome, ms, opts.summary ?? job.command) };
+    const detail = opts.summaryI18n && opts.summary ? { text: opts.summary, i18n: opts.summaryI18n } : opts.summary ?? job.command;
+    const act: Activity = { id: `${id}#shell-done:${job.id}`, at, ...SPECIAL.shellDone(job.label, outcome, ms, detail, job.labelI18n) };
     if (outcome === 'ok') act.durationMs = ms;
     this.addActivity(id, act, true, { feed: live });
     if (!live || outcome === 'killed') return;
     const room = this.roomName(info.roomId);
     const text =
       outcome === 'ok' ? `✅ ${info.name}: shell terminou em ${room} — ${job.label}` : `❌ ${info.name}: shell falhou em ${room} — ${job.label}`;
-    this.notice('shellDone', id, outcome === 'ok' ? 'success' : 'warn', text, info.roomId, { dedupeKey: `${id}|shellDone|${job.id}` });
+    this.notice('shellDone', id, outcome === 'ok' ? 'success' : 'warn', text, info.roomId, {
+      dedupeKey: `${id}|shellDone|${job.id}`,
+      i18n: outcome === 'ok' ? productCopy(job.labelI18n ? '✅ {agente}: shell terminou em {sala}' : '✅ {agente}: shell terminou em {sala} — {rotulo}', { agente: info.name, sala: room, rotulo: job.label }).i18n : productCopy(job.labelI18n ? '❌ {agente}: shell falhou em {sala}' : '❌ {agente}: shell falhou em {sala} — {rotulo}', { agente: info.name, sala: room, rotulo: job.label }).i18n,
+    });
   }
 
   /**
@@ -520,12 +539,12 @@ export class Office {
     if (!live) return;
     // o mesmo CI visto de novo (gh run view depois do watch) não repete o aviso por 2 min
     const ci = ev.kind === 'ci_failed' || ev.kind === 'ci_passed';
-    this.notice('github', id, d.level, d.notice, info.roomId, { dedupeKey: `${info.roomId}|gh|${githubEventKey(ev)}`, dedupeMs: ci ? 120_000 : NOTICE_DEDUPE_MS });
+    this.notice('github', id, d.level, d.notice, info.roomId, { dedupeKey: `${info.roomId}|gh|${githubEventKey(ev)}`, dedupeMs: ci ? 120_000 : NOTICE_DEDUPE_MS, i18n: d.noticeI18n });
     if (this.effects.apply(info.roomId, ev, now, id)) this.markDirty();
   }
 
   /** Rótulo do shell mais antigo (Bash antes de Monitor), quantos são e o detalhe (comando). */
-  private shellSummary(rec: AgentRecord): { label?: string; count: number; detail?: string } {
+  private shellSummary(rec: AgentRecord): { label?: string; labelI18n?: MessageRef; count: number; detail?: string } {
     let jobs = rec.info.shells ?? [];
     if (!jobs.length) {
       // Sem shells próprios conhecidos: algum subagente pode ter disparado o comando.
@@ -538,7 +557,8 @@ export class Office {
     const main = shells[0] ?? jobs.find((j) => j.kind === 'shell') ?? jobs[0];
     if (!main) return { count: 0 };
     // "Esperando 2 shells": conta os Bash em segundo plano (monitores só se não houver nenhum).
-    const out: { label?: string; count: number; detail?: string } = { label: main.label, count: shells.length || jobs.length };
+    const out: { label?: string; labelI18n?: MessageRef; count: number; detail?: string } = { label: main.label, count: shells.length || jobs.length };
+    if (main.labelI18n) out.labelI18n = main.labelI18n;
     if (main.command) out.detail = main.command;
     return out;
   }
@@ -551,6 +571,7 @@ export class Office {
     info.status = 'offline';
     info.statusSince = now;
     delete info.waitingFor;
+    delete info.waitingForI18n;
     // Os shells morrem com a sessão.
     delete info.shells;
     delete rec.shellWait;
@@ -564,7 +585,7 @@ export class Office {
       }
       sub.removeAt = Math.min(sub.removeAt ?? Infinity, rec.removeAt);
     }
-    this.notice('leave', id, 'info', `🚪 ${info.name} encerrou a sessão`, info.roomId);
+    this.notice('leave', id, 'info', `🚪 ${info.name} encerrou a sessão`, info.roomId, { i18n: productCopy('🚪 {agente} encerrou a sessão', { agente: info.name }).i18n });
     this.markDirty();
   }
 
@@ -623,7 +644,10 @@ export class Office {
     if (opts.notify !== false) {
       const parent = info.parentId ? this.agents.get(info.parentId)?.info : undefined;
       const what = info.title ? `“${info.title}”` : 'o trabalho';
-      this.notice('deliver', id, 'success', `📦 ${info.name} entregou ${what} para ${parent?.name ?? 'o agente principal'}`, info.roomId);
+      const copy = info.title
+        ? parent ? productCopy('📦 {agente} entregou “{trabalho}” para {destino}', { agente: info.name, trabalho: info.title, destino: parent.name }) : productCopy('📦 {agente} entregou “{trabalho}” para o agente principal', { agente: info.name, trabalho: info.title })
+        : parent ? productCopy('📦 {agente} entregou o trabalho para {destino}', { agente: info.name, destino: parent.name }) : productCopy('📦 {agente} entregou o trabalho para o agente principal', { agente: info.name });
+      this.notice('deliver', id, 'success', `📦 ${info.name} entregou ${what} para ${parent?.name ?? 'o agente principal'}`, info.roomId, { i18n: copy.i18n });
     }
     this.markDirty();
   }
@@ -741,12 +765,12 @@ export class Office {
    * Aviso de pedido de permissão (ou de pergunta do AskUserQuestion) vindo do hook; usa o dedupe do "precisa de
    * você" (o mesmo pedido, outro caminho).
    */
-  noticePermission(id: string, what: string, kind: 'permission' | 'question' = 'permission'): void {
+  noticePermission(id: string, what: string, kind: 'permission' | 'question' = 'permission', whatI18n?: MessageRef): void {
     const info = this.agents.get(id)?.info;
     if (!info) return;
     const room = this.roomName(info.roomId);
     const text = kind === 'question' ? `❓ ${info.name} tem uma pergunta em ${room}: ${what}` : `🔐 ${info.name} pede permissão em ${room}: ${what}`;
-    this.notice('wait', id, 'alert', text, info.roomId);
+    this.notice('wait', id, 'alert', text, info.roomId, { i18n: kind === 'question' ? productCopy('❓ {agente} tem uma pergunta em {sala}: {pergunta}', { agente: info.name, sala: room, pergunta: what }).i18n : productCopy(whatI18n ? '🔐 {agente} pede permissão em {sala}' : '🔐 {agente} pede permissão em {sala}: {permissao}', { agente: info.name, sala: room, permissao: what }).i18n });
     this.markDirty();
   }
 
@@ -826,7 +850,7 @@ export class Office {
     info.custom = true;
     const room = this.roomName(info.roomId);
     const text = before === input.name ? `✏️ ${input.name} mudou de visual em ${room}` : `✏️ ${before} agora é ${input.name} em ${room}`;
-    this.notice('character', id, 'info', text, info.roomId, { dedupeMs: 0 });
+    this.notice('character', id, 'info', text, info.roomId, { dedupeMs: 0, i18n: before === input.name ? productCopy('✏️ {agente} mudou de visual em {sala}', { agente: input.name, sala: room }).i18n : productCopy('✏️ {antes} agora é {agente} em {sala}', { antes: before, agente: input.name, sala: room }).i18n });
     this.markDirty();
     return { result: 'ok' };
   }
@@ -1022,7 +1046,7 @@ export class Office {
     if (this.rooms.has(roomId)) return;
     this.rooms.set(roomId, { path: roomId, createdAt: now });
     this.recomputeRoomNames();
-    this.notice('room', roomId, 'info', `🏗️ Nova sala: ${this.roomName(roomId)}`, roomId);
+    this.notice('room', roomId, 'info', `🏗️ Nova sala: ${this.roomName(roomId)}`, roomId, { i18n: productCopy('🏗️ Nova sala: {sala}', { sala: this.roomName(roomId) }).i18n });
   }
 
   private recomputeRoomNames(): void {
@@ -1053,7 +1077,7 @@ export class Office {
     level: NoticeLevel,
     text: string,
     roomId?: string,
-    opts: { dedupeKey?: string; dedupeMs?: number } = {},
+    opts: { dedupeKey?: string; dedupeMs?: number; i18n?: MessageRef } = {},
   ): void {
     if (this.booting) return;
     const now = this.now();
@@ -1067,6 +1091,7 @@ export class Office {
       for (const [nk, t] of this.noticeAt) if (now - t > Math.max(NOTICE_DEDUPE_MS, SHELL_NOTICE_DEDUPE_MS)) this.noticeAt.delete(nk);
     }
     const n: Notice = { id: `n-${now.toString(36)}-${++this.seq}`, level, text, at: now };
+    if (opts.i18n) n.i18n = opts.i18n;
     if (kind !== 'room') n.agentId = key;
     if (roomId) n.roomId = roomId;
     this.pendingNotices.push(n);

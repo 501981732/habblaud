@@ -2,7 +2,7 @@
   "name": "habblaud",
   "version": "0.8.0",
   "private": true,
-  "description": "Escritório virtual animado que mostra, em tempo real, o que seus agentes do Claude Code estão fazendo.",
+  "description": "实时观察 Claude Code、Codex、DeepSeek Harness 和 Pi 的像素办公室，支持中文和葡萄牙语。",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -11,16 +11,17 @@
   "homepage": "https://github.com/marmottajr/habblaud#readme",
   "type": "module",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "dev": "tsx watch --clear-screen=false --exclude './client/**' server/index.ts --dev",
     "dev:client": "vite --config vite.config.ts",
     "demo": "HABBLAUD_DEMO=1 npm run dev",
     "demo:timeline": "tsx scripts/demo-timeline.ts",
-    "build": "npm run build:client && npm run build:server",
+    "build": "npm run build:client && npm run build:server && npm run build:integrations",
     "build:client": "vite build --config vite.config.ts",
     "build:server": "node scripts/build-server.mjs",
+    "build:integrations": "node scripts/build-integrations.mjs",
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p server/tsconfig.json",
     "test": "vitest run",
@@ -40,9 +41,15 @@
     "codex:uninstall": "tsx scripts/codex-install.ts uninstall",
     "codex:status": "tsx scripts/codex-install.ts status",
     "codex:bridge": "tsx scripts/codex-bridge.ts",
+    "dsh:install": "node --import tsx scripts/dsh-install.ts install",
+    "dsh:uninstall": "node --import tsx scripts/dsh-install.ts uninstall",
+    "dsh:status": "node --import tsx scripts/dsh-install.ts status",
+    "pretest:installers": "npm run build:integrations",
+    "test:installers": "node --import tsx --test scripts/dsh-install.test.ts",
     "release": "tsx scripts/release.ts"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.2.0",
     "@fontsource/pixelify-sans": "^5.3.0",
     "@types/node": "^22.20.5",
     "esbuild": "^0.28.2",

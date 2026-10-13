@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../../../shared/i18n';
 import {
   calendarDayDiff,
   clampPercent,
@@ -26,6 +27,9 @@ const S = 1_000;
 const M = 60 * S;
 const H = 60 * M;
 const D = 24 * H;
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('zh-CN'));
 
 describe('relativeTime', () => {
   const now = new Date(2026, 9, 6, 14, 0, 0).getTime();
@@ -92,6 +96,12 @@ describe('números', () => {
     expect(formatUSD(1.234)).toBe('US$ 1,23');
     expect(formatUSD(0)).toBe('US$ 0,00');
     expect(formatInt(12345)).toBe('12.345');
+  });
+  it('uses locale-aware Chinese numbers and currency', () => {
+    setLocale('zh-CN');
+    expect(formatInt(12345)).toBe('12,345');
+    expect(formatUSD(1.234)).toContain('1.23');
+    expect(formatDuration(2 * H + 10 * M)).toBe('2 小时 10 分钟');
   });
   it('plural', () => {
     expect(plural(1, 'agente', 'agentes')).toBe('1 agente');

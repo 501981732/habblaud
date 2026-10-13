@@ -5,6 +5,7 @@
 // Os itens são POSICIONADOS em ordem decrescente de prioridade (quem chega depois desvia, vira
 // só o ícone ou é descartado) e DESENHADOS em ordem crescente (o mais importante fica por cima).
 import { TILE } from '../../art/api';
+import { localize, t } from '../../../../shared/i18n';
 import type { WorldOptions } from '../api';
 import type { Camera } from '../camera';
 import { COL_W, CORRIDOR_Y, SOUTH_Y } from '../constants';
@@ -17,7 +18,7 @@ import type { HeadInfo, Renderer } from './renderer';
 
 // A Pixelify Sans tem o "C" maiúsculo quase fechado (lê-se "Oopa" em vez de "Copa") em qualquer
 // peso/tamanho usado no canvas; os textos do mundo usam a fonte do sistema, sempre legível.
-const UI_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+const UI_FONT = 'ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
 const LABEL_FONT = `600 10.5px ${UI_FONT}`;
 const BUBBLE_FONT = `500 11.5px ${UI_FONT}`;
 const SAY_FONT = `500 10.5px ${UI_FONT}`;
@@ -157,9 +158,10 @@ export function headIconLift(ch: Pick<Character, 'mode' | 'icon'>): number {
 }
 
 /** Texto do balão de espera: só o motivo (o amarelo e o ✋ já dizem "precisa de você"). */
-export function waitBubbleText(waitingFor: string | undefined): string {
-  const why = (waitingFor ?? '').trim().replace(/^precisa de você:?\s*/i, '');
-  return why ? why.charAt(0).toUpperCase() + why.slice(1) : 'Responder no terminal';
+export function waitBubbleText(waitingFor: string | undefined, waitingForI18n?: Character['info']['waitingForI18n']): string {
+  const source = waitingForI18n ? localize({ text: waitingFor ?? '', i18n: waitingForI18n }) : (waitingFor ?? '');
+  const why = source.trim().replace(/^(?:precisa de você|需要你处理):?\s*/i, '');
+  return why ? why.charAt(0).toUpperCase() + why.slice(1) : t('Responder no terminal');
 }
 
 /**
@@ -232,14 +234,16 @@ export class Overlay {
     if (this.fitted.size > 2000) this.fitted.clear();
     let out = text;
     if (this.measure(font, text) > maxW) {
+      // Canvas strings use UTF-16 indices; code points keep CJK and emoji intact when truncating.
+      const chars = Array.from(text);
       let lo = 0;
-      let hi = text.length;
+      let hi = chars.length;
       while (lo < hi) {
         const mid = (lo + hi + 1) >> 1;
-        if (this.measure(font, `${text.slice(0, mid).trimEnd()}…`) <= maxW) lo = mid;
+        if (this.measure(font, `${chars.slice(0, mid).join('').trimEnd()}…`) <= maxW) lo = mid;
         else hi = mid - 1;
       }
-      out = lo > 0 ? `${text.slice(0, lo).trimEnd()}…` : '';
+      out = lo > 0 ? `${chars.slice(0, lo).join('').trimEnd()}…` : '';
     }
     this.fitted.set(key, out);
     return out;
@@ -437,7 +441,7 @@ export class Overlay {
         if (!room.present || room.ghost || (anim && anim.walls < 0.6)) continue;
         this.drawRoomPill(room.info.name, cx, cy, colW - 8, room.accounts, this.countIn(room.id), room.theme.accent, room.lightOn);
       } else if (CORE_NAMES[vis.id]) {
-        this.drawCorePill(CORE_NAMES[vis.id], cx, cy, colW - 8);
+        this.drawCorePill(t(CORE_NAMES[vis.id]), cx, cy, colW - 8);
       }
     }
   }
@@ -616,7 +620,7 @@ export class Overlay {
 
   private bubbleFor(ch: Character, head: HeadInfo, now: number, opts: WorldOptions, selected: boolean, hovered: boolean): Bubble | null {
     if (opts.bubbles === 'none') return null;
-    if (ch.mode === 'wait') return this.takeBubble(ch, head, '✋', waitBubbleText(ch.info.waitingFor), 'alert', 100, 1, now);
+    if (ch.mode === 'wait') return this.takeBubble(ch, head, '✋', waitBubbleText(ch.info.waitingFor, ch.info.waitingForI18n), 'alert', 100, 1, now);
     if (ch.bubbleText && now < ch.bubbleUntil) {
       const a = Math.min(1, (now - ch.bubbleAt) / 150, (ch.bubbleUntil - now) / 400);
       return this.takeBubble(ch, head, ch.bubbleIcon, ch.bubbleText, 'deliver', 90, a, ch.bubbleAt);
@@ -633,12 +637,13 @@ export class Overlay {
     }
     if (!act || ch.leaving) return null;
     const age = now - ch.activityChangedAt;
-    if (selected) return this.takeBubble(ch, head, act.icon, act.text, 'info', 80, 1, ch.activityChangedAt);
-    if (hovered) return this.takeBubble(ch, head, act.icon, act.text, 'info', 75, 1, ch.activityChangedAt);
-    if (opts.bubbles === 'all' && ch.mode === 'work') return this.takeBubble(ch, head, act.icon, act.text, 'info', age < RECENT_MS ? 50 : 30, 1, ch.activityChangedAt);
+    const activityText = act.i18n ? localize({ text: act.text, i18n: act.i18n }) : act.text;
+    if (selected) return this.takeBubble(ch, head, act.icon, activityText, 'info', 80, 1, ch.activityChangedAt);
+    if (hovered) return this.takeBubble(ch, head, act.icon, activityText, 'info', 75, 1, ch.activityChangedAt);
+    if (opts.bubbles === 'all' && ch.mode === 'work') return this.takeBubble(ch, head, act.icon, activityText, 'info', age < RECENT_MS ? 50 : 30, 1, ch.activityChangedAt);
     if (age < RECENT_MS && ch.activityChangedAt > 0) {
       const a = Math.min(1, age / 150, (RECENT_MS - age) / 500);
-      return this.takeBubble(ch, head, act.icon, act.text, 'info', 50, a, ch.activityChangedAt);
+      return this.takeBubble(ch, head, act.icon, activityText, 'info', 50, a, ch.activityChangedAt);
     }
     return null;
   }

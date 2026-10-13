@@ -1,5 +1,6 @@
 // Configurações (popover): opções do escritório, avisos, modo demonstração e Sobre (versão).
 import type { UiComponent, UiContext } from './context';
+import type { Locale } from '../../../shared/i18n';
 import { h, iconButton, setAttr, setHidden, setText } from './dom';
 import { ICONS } from './icons';
 import { notificationState, type Notifier } from './notify';
@@ -61,6 +62,7 @@ export class SettingsPopover implements UiComponent {
   private bubbles: ReturnType<typeof segmented<UiPrefs['bubbles']>>;
   private liveliness: ReturnType<typeof segmented<UiPrefs['liveliness']>>;
   private daylight: ReturnType<typeof segmented<UiPrefs['daylight']>>;
+  private language: ReturnType<typeof segmented<Locale>>;
   private soundGroup: SoundSettingsGroup;
   private demoGroup: HTMLElement;
   private about: AboutGroup;
@@ -107,6 +109,7 @@ export class SettingsPopover implements UiComponent {
       (v) => ctx.updatePrefs({ daylight: v }),
     );
     this.daylight.row.append(h('span', { class: 'ui-set__hint', text: 'Automático: céu, luzes e sol nas janelas seguem a hora local.' }));
+    this.language = segmented<Locale>('Idioma', [['zh-CN', '简体中文'], ['pt-BR', 'Português (Brasil)']], (locale) => ctx.updatePrefs({ locale }));
     this.soundGroup = new SoundSettingsGroup(ctx, sound);
 
     this.demoGroup = h(
@@ -131,6 +134,7 @@ export class SettingsPopover implements UiComponent {
         this.bubbles.row,
         this.liveliness.row,
         this.daylight.row,
+        this.language.row,
       ),
       h(
         'div',
@@ -200,6 +204,7 @@ export class SettingsPopover implements UiComponent {
     this.bubbles.set(p.bubbles);
     this.liveliness.set(p.liveliness);
     this.daylight.set(p.daylight);
+    this.language.set(p.locale);
     this.soundGroup.render();
     setHidden(this.demoGroup, this.ctx.store.mock);
     this.about.render();

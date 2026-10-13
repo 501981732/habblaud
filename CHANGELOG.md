@@ -1,14 +1,22 @@
-# Novidades
+# 更新记录
 
-O que entrou em cada versão do Habblaud. Cada versão tem a sua seção aqui, e o texto dela vira as notas da
-[release no GitHub](https://github.com/marmottajr/habblaud/releases) (`npm run release`), que o Habblaud abre em
-**Configurações › Sobre › Ver o que mudou**.
+这里记录 Habblaud 各版本的改动。每个版本有独立小节，`npm run release` 会将相应内容作为
+[GitHub Release 说明](https://github.com/marmottajr/habblaud/releases)，界面「设置 → 关于 → 查看更新」会打开它。
+0.8.0 及更早的小节保留上游葡语原文；本 Fork 的新增内容从下面的「未发布」条目开始用中文记录。
 
-O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/), e os números seguem o
-[versionamento semântico](https://semver.org/lang/pt-BR/): correção sobe o último número (0.2.**1**), novidade sobe o
-do meio (0.**3**.0).
+格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号采用
+[语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [Não lançado]
+
+### 中文与多 Agent 接入
+
+- 首次打开默认简体中文，可在设置中切换回巴西葡语并记住选择；侧栏、详情、历史、统计、审批、通知和 Canvas 文案按当前语言显示。原始对话、命令、工具参数、路径与模型名保持原文。
+- 中文 README、服务器及 Claude 插件说明成为 Fork 的默认文档；保留葡语原版入口。分享图更新为中文，并说明 Claude Code、Codex、DeepSeek Harness 与 Pi 四种运行环境。
+- DeepSeek Harness 通过原生 Cordis 插件接入实时状态、解码历史、消息与审批。桥接使用本机私有令牌，断线审批回退 DSH Web UI；模型名称单独展示，DSH 中的 GLM 不再需要伪装成 Claude 或 Codex。
+- Pi 通过原生 extension 接入会话、工具、对话与消息；冷历史读取 session JSONL 的当前分支。Pi 工具审批需主动设置 `HABBLAUD_PI_APPROVALS=1`，失败、取消或失联不会自动批准。
+- 保留 Claude Code 与 Codex 原有文件读取、插件、hooks、消息和历史路径；旧记录缺少 provider 时继续按 Claude Code 解释。原生桥接加入事件去重、实例替换、来源能力声明和有界私有历史缓存。
+- 最低 Node.js 版本调整为 22.19.0，以满足 Pi SDK 依赖要求；CI 使用同一最低版本完成检查。
 
 ## [0.8.0] - 2026-10-09
 

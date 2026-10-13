@@ -3,6 +3,7 @@
 // Puro: usado pelo simulador no servidor (HABBLAUD_DEMO=1) e no navegador (?mock=1).
 import type { PermissionRequestInfo } from '../types';
 import { describeTool } from '../activity';
+import { productCopy } from '../copy';
 
 export interface DemoPermissionSource {
   /** Arquivos do projeto fictício (relativos à raiz). */
@@ -33,39 +34,39 @@ const DEMO_QUESTIONS: readonly DemoQuestion[][] = [
   [
     {
       header: 'Cache',
-      question: 'Onde guardo o cache das sessões de login?',
+      question: '登录会话缓存应该存在哪里？',
       options: [
-        { label: 'Redis', description: 'Rápido, e já roda no docker-compose do projeto' },
-        { label: 'PostgreSQL', description: 'Uma tabela a mais no banco que já existe' },
-        { label: 'Memória', description: 'Mais simples, mas some quando o servidor reinicia' },
+        { label: 'Redis', description: '速度快，项目的 Docker Compose 已经包含它' },
+        { label: 'PostgreSQL', description: '在现有数据库中增加一张表' },
+        { label: '内存', description: '最简单，但服务重启后会丢失' },
       ],
     },
     {
-      header: 'Testes',
-      question: 'Quais testes eu rodo antes do commit?',
+      header: '测试',
+      question: '提交前需要运行哪些测试？',
       multiSelect: true,
       options: [
-        { label: 'Unidade', description: 'npm test, cerca de 40 s' },
-        { label: 'Integração', description: 'Sobe um banco de teste no Docker' },
-        { label: 'E2E', description: 'Playwright no navegador, uns 5 min' },
+        { label: '单元测试', description: '运行 npm test，约 40 秒' },
+        { label: '集成测试', description: '在 Docker 中启动测试数据库' },
+        { label: 'E2E', description: '在浏览器运行 Playwright，约 5 分钟' },
       ],
     },
   ],
   [
     {
-      header: 'Erro de rede',
-      question: 'Como trato a falha de rede no checkout?',
+      header: '网络错误',
+      question: '结算时网络失败要如何处理？',
       options: [
-        { label: 'Tentar de novo', description: 'Até 3 tentativas, com espera crescente' },
-        { label: 'Avisar o cliente', description: 'Mensagem com um botão para tentar de novo' },
-        { label: 'Guardar e enviar depois', description: 'Fila local até a conexão voltar' },
+        { label: '重试', description: '最多重试 3 次，逐步增加等待时间' },
+        { label: '提示用户', description: '显示消息和重试按钮' },
+        { label: '暂存后发送', description: '先放入本地队列，恢复网络后发送' },
       ],
     },
     {
-      header: 'Telas',
-      question: 'Em quais telas aplico a mudança?',
+      header: '页面',
+      question: '这次修改应应用在哪些页面？',
       multiSelect: true,
-      options: [{ label: 'Carrinho' }, { label: 'Pagamento' }, { label: 'Confirmação do pedido' }],
+      options: [{ label: '购物车' }, { label: '付款' }, { label: '订单确认' }],
     },
   ],
 ];
@@ -90,7 +91,7 @@ export function demoPermission(id: string, src: DemoPermissionSource, rng: () =>
   if (roll >= 0.9) {
     const qs = pick(DEMO_QUESTIONS);
     const d = describeTool('AskUserQuestion', { questions: qs });
-    return { ...base, tool: 'AskUserQuestion', title: `AskUserQuestion(${qs[0].question})`, text: d.text, icon: d.icon, input: questionsText(qs), inputKind: 'text', questions: d.questions };
+    return { ...base, tool: 'AskUserQuestion', title: `AskUserQuestion(${qs[0].question})`, text: d.text, i18n: d.i18n, icon: d.icon, input: questionsText(qs), inputKind: 'text', questions: d.questions };
   }
   if (roll < 0.55 && src.commands.length) {
     const command = pick(src.commands);
@@ -101,6 +102,7 @@ export function demoPermission(id: string, src: DemoPermissionSource, rng: () =>
       tool: 'Bash',
       title: `Bash(${command})`,
       text: d.text,
+      i18n: d.i18n,
       icon: d.icon,
       input: command,
       inputKind: 'command',
@@ -110,17 +112,18 @@ export function demoPermission(id: string, src: DemoPermissionSource, rng: () =>
   if (roll < 0.8 && src.files.length) {
     const file = pick(src.files);
     const d = describeTool('Edit', { file_path: file });
-    return { ...base, tool: 'Edit', title: `Edit(${file})`, text: d.text, icon: d.icon, input: pick(DEMO_DIFFS).join('\n'), inputKind: 'diff' };
+    return { ...base, tool: 'Edit', title: `Edit(${file})`, text: d.text, i18n: d.i18n, icon: d.icon, input: pick(DEMO_DIFFS).join('\n'), inputKind: 'diff' };
   }
-  const url = 'https://developer.mozilla.org/pt-BR/docs/Web/API/Fetch_API';
+  const url = 'https://developer.mozilla.org/zh-CN/docs/Web/API/Fetch_API';
   const d = describeTool('WebFetch', { url });
   return {
     ...base,
     tool: 'WebFetch',
     title: `WebFetch(${url})`,
     text: d.text,
+    i18n: d.i18n,
     icon: d.icon,
-    input: 'Resuma como tratar erros de rede com fetch',
+    input: '总结如何使用 fetch 处理网络错误',
     inputKind: 'text',
     suggestions: [{ index: 0, rules: ['WebFetch(domain:developer.mozilla.org)'], destination: 'localSettings' }],
   };
@@ -156,13 +159,13 @@ export function demoCodexPermission(id: string, src: DemoPermissionSource, rng: 
   if (roll < 0.3 && src.files.length) {
     const file = pick(src.files);
     const d = describeTool('Edit', { file_path: file });
-    return { ...base, tool: 'apply_patch', title: `apply_patch(${file})`, text: d.text, icon: d.icon, input: demoPatchText(file, pick(DEMO_DIFFS)), inputKind: 'diff' };
+    return { ...base, tool: 'apply_patch', title: `apply_patch(${file})`, text: d.text, i18n: d.i18n, icon: d.icon, input: demoPatchText(file, pick(DEMO_DIFFS)), inputKind: 'diff' };
   }
   if (roll < 0.45) {
     const [host, command] = pick(DEMO_NETWORK);
-    return { ...base, tool: 'Bash', title: `Bash(${command})`, text: `Acesso à rede: ${host}`, icon: '🌐', input: command, inputKind: 'command' };
+    return { ...base, tool: 'Bash', title: `Bash(${command})`, ...productCopy('Acesso à rede: {dominio}', { dominio: host }), icon: '🌐', input: command, inputKind: 'command' };
   }
   const command = src.commands.length ? pick(src.commands) : 'npm test';
   const d = describeTool('Bash', { command });
-  return { ...base, tool: 'Bash', title: `Bash(${command})`, text: d.text, icon: d.icon, input: command, inputKind: 'command' };
+  return { ...base, tool: 'Bash', title: `Bash(${command})`, text: d.text, i18n: d.i18n, icon: d.icon, input: command, inputKind: 'command' };
 }

@@ -1,12 +1,13 @@
 // Gaveta de detalhes (direita): agente ou sala selecionados. Agente do Codex: selo "Codex", textos dele (onde
 // responder, o terminal, a aprovação no lugar do modo de permissão, sem custo) e a dica dos hooks do Codex.
 import type { Activity, AgentInfo, FeedItem, RoomInfo, ShellJob, TaskItem } from '../../../shared/types';
+import { localize, t as translate } from '../../../shared/i18n';
 import { roomTheme } from '../art';
 import { createAvatarPlaceholder, updateAvatar } from './avatar';
 import { CharacterEditor } from './character-editor';
 import { MessageComposer } from './composer';
 import type { UiComponent, UiContext } from './context';
-import { copyText, h, iconButton, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
+import { copyText, h, iconButton, KeyedList, setAttr, setHidden, setRawText, setRawTitle, setStyleVar, setText, setTitle, setVariant } from './dom';
 import {
   formatClock,
   formatDateTime,
@@ -40,7 +41,7 @@ import {
 } from './model';
 import { isLocalHostname, PermissionCard } from './permission';
 import { canRenameRoom } from './roomrename';
-import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf } from './provider';
+import { accountChipLabel, accountProvider, agentCan, CODEX_LIVE_HINT, codexApprovalLabel, providerName, providerOf } from './provider';
 import { createAgentRow, updateAgentRow } from './rows';
 import { SocialSection } from './social';
 import { TERMINAL_UNAVAILABLE_HINT, type TerminalControl } from './terminal';
@@ -95,11 +96,11 @@ function createTaskItem(): HTMLElement {
 function updateTaskItem(li: HTMLElement, t: TaskItem, owner?: string): void {
   const [mark, text, ownerEl] = li.children as unknown as HTMLElement[];
   setText(mark, TASK_MARK[t.status]);
-  setText(text, t.status === 'in_progress' && t.activeForm ? t.activeForm : t.title);
+  setRawText(text, t.status === 'in_progress' && t.activeForm ? t.activeForm : t.title);
   setText(ownerEl, owner ?? '');
   setHidden(ownerEl, !owner);
   setVariant(li, 'is-', t.status);
-  setAttr(li, 'aria-label', `${t.title}: ${TASK_STATE[t.status]}`);
+  setAttr(li, 'aria-label', translate('{title}: {status}', { title: t.title, status: translate(TASK_STATE[t.status]) }));
 }
 
 function createTimelineItem(): HTMLElement {
@@ -115,10 +116,12 @@ function createTimelineItem(): HTMLElement {
 function updateTimelineItem(li: HTMLElement, a: Activity, now: number, who?: string): void {
   const [icon, text, time] = li.children as unknown as HTMLElement[];
   setText(icon, a.icon);
-  setText(text, who ? `${who}: ${a.text}` : a.text);
+  const activityText = a.i18n ? localize({ text: a.text, i18n: a.i18n }) : a.text;
+  setRawText(text, who ? `${who}: ${activityText}` : activityText);
   setText(time, relativeTime(a.at, now));
   setAttr(time, 'datetime', new Date(a.at).toISOString());
-  setTitle(li, `${formatClock(a.at)} · ${a.text}${a.detail ? `\n${a.detail}` : ''}`);
+  const detail = a.detailI18n ? localize({ text: a.detail ?? '', i18n: a.detailI18n }) : a.detail;
+  setRawTitle(li, `${formatClock(a.at)} · ${activityText}${detail ? `\n${detail}` : ''}`);
   li.classList.toggle('is-error', !!a.error);
   const done = shellDoneKind(a);
   li.classList.toggle('is-shell-ok', done === 'ok');
@@ -162,19 +165,20 @@ function createShellItem(): HTMLElement {
 function updateShellItem(li: HTMLElement, j: ShellJob, now: number): void {
   const r = shellRefs.get(li)!;
   setText(r.icon, j.kind === 'monitor' ? '📡' : '💻');
-  setText(r.label, j.label);
-  setTitle(r.label, j.label);
+  const label = j.labelI18n ? localize({ text: j.label, i18n: j.labelI18n }) : j.label;
+  setRawText(r.label, label);
+  setRawTitle(r.label, label);
   const elapsed = Math.max(0, now - j.startedAt);
   setText(r.time, formatElapsed(elapsed));
   setAttr(r.time, 'datetime', new Date(j.startedAt).toISOString());
-  setTitle(r.time, `Rodando há ${formatDuration(elapsed)} (desde ${formatClock(j.startedAt)})`);
+  setTitle(r.time, translate('Rodando há {duration} (desde {start})', { duration: formatDuration(elapsed), start: formatClock(j.startedAt) }));
   setText(r.badge, shellKindLabel(j));
   setVariant(r.badge, 'ui-shell__badge--', SHELL_KIND_VARIANT(j));
-  setText(r.since, `desde ${formatClock(j.startedAt, false)}`);
-  setTitle(r.since, `Iniciado em ${formatDateTime(j.startedAt)} · id ${j.id}`);
+  setText(r.since, translate('desde {start}', { start: formatClock(j.startedAt, false) }));
+  setTitle(r.since, translate('Iniciado em {start} · id {id}', { start: formatDateTime(j.startedAt), id: j.id }));
   setHidden(r.details, !j.command);
-  setText(r.command, j.command ?? '');
-  setAttr(li, 'aria-label', `${j.label}, ${shellKindLabel(j)}, rodando há ${formatDuration(elapsed)}`);
+  setRawText(r.command, j.command ?? '');
+  setAttr(li, 'aria-label', translate('{label}, {kind}, rodando há {duration}', { label, kind: shellKindLabel(j), duration: formatDuration(elapsed) }));
 }
 
 
@@ -468,22 +472,22 @@ class AgentView {
 
     updateAvatar(this.avatar, a, 'lg');
     setStyleVar(this.avatar, '--acc', account?.color ?? '#8b98b3');
-    setText(this.name, a.name);
+    setRawText(this.name, a.name);
     this.character.render(a, !!live);
     setText(this.role, roleLabel(a));
     setVariant(this.role, 'ui-role--', a.kind);
-    setText(this.title, a.title ?? '');
+    setRawText(this.title, a.title ?? '');
     setHidden(this.title, !a.title);
-    setTitle(this.title, a.title ?? '');
+    setRawTitle(this.title, a.title ?? '');
     updateAccountChip(this.accChip, account, a.account, a.provider);
-    setText(this.accName, account?.name ?? a.account);
+    setRawText(this.accName, account?.name ?? a.account);
     updateProviderTag(this.accProv, provider, account?.name ?? '');
     // E-mail (Claude Code) ou, no Codex (sem e-mail), o plano.
-    const accSub = account?.email ?? (codex && account?.plan ? `plano ${account.plan}` : '');
-    setText(this.accEmail, accSub);
+    const accSub = account?.email ?? (codex && account?.plan ? translate('plano {plan}', { plan: account.plan }) : '');
+    setRawText(this.accEmail, accSub);
     setHidden(this.accEmail, !accSub);
-    setText(this.roomName, room?.name ?? a.roomId);
-    setTitle(this.roomBtn, room ? `${room.path}\nClique para ver a sala` : '');
+    setRawText(this.roomName, room?.name ?? a.roomId);
+    setRawTitle(this.roomBtn, room ? translate('{path}\nClique para ver a sala', { path: room.path }) : '');
     setHidden(this.gone, !!live);
     this.el.classList.toggle('is-gone', !live);
 
@@ -495,7 +499,7 @@ class AgentView {
     // Parado num comando longo: o "desde" é o início do comando (o status do servidor continua 'working').
     const since = wait?.foreground ? wait.since : a.statusSince;
     setText(this.statusSince, relativeTime(since, now));
-    setTitle(this.statusSince, `Desde ${formatClock(since)}`);
+    setTitle(this.statusSince, translate('Desde {time}', { time: formatClock(since) }));
     const following = this.ctx.world.getOptions().followSelected;
     setAttr(this.followBtn, 'aria-pressed', String(following));
     this.followBtn.classList.toggle('is-on', following);
@@ -503,13 +507,14 @@ class AgentView {
 
     // Alerta.
     const waiting = a.status === 'waiting' && !!live;
-    this.perm.render(live);
+    this.perm.render(live && agentCan(live, 'permissions') ? live : undefined);
     setHidden(this.alert, !waiting || this.perm.visible);
     if (waiting) {
       const accName = account?.name ?? a.account;
       // Codex: "Vá ao Codex (Conta X)"; sem repetir quando a conta já se chama "Codex".
-      const where = codex ? `ao Codex${/codex/i.test(accName) ? '' : ` (${accName})`}` : `ao terminal da ${accName}`;
-      setText(this.alertText, `Vá ${where} em ${room?.name ?? 'seu projeto'} para responder${a.waitingFor ? `: ${a.waitingFor}` : '.'}`);
+      const where = codex ? `${translate('ao Codex')}${/codex/i.test(accName) ? '' : ` (${accName})`}` : translate('ao terminal da {account}', { account: accName });
+      const reason = a.waitingForI18n ? localize({ text: a.waitingFor ?? '', i18n: a.waitingForI18n }) : a.waitingFor;
+      setRawText(this.alertText, translate(a.waitingFor ? 'Vá {where} em {room} para responder: {reason}' : 'Vá {where} em {room} para responder.', { where, room: room?.name ?? translate('seu projeto'), reason: reason ?? '' }));
     }
     // Perguntas do AskUserQuestion (só leitura): o Codex não pergunta pelo escritório.
     const asking = waiting && !codex && a.activity?.kind === 'ask' ? a.activity : undefined;
@@ -517,7 +522,7 @@ class AgentView {
     // Sem o pedido no escritório: dá para responder por aqui com o plugin (só com a trava local, como o cartão). O Codex
     // não responde perguntas pelo escritório.
     const answerable =
-      !codex && !!asking?.questions?.length && !this.perm.visible && !this.ctx.store.mock && !!this.ctx.store.snapshot?.meta.terminal && isLocalHostname(location.hostname);
+      !!asking?.questions?.length && !this.perm.visible && !this.ctx.store.mock && !!this.ctx.store.snapshot?.meta.terminal && isLocalHostname(location.hostname) && !!live && agentCan(live, 'permissions');
     setHidden(this.alertAnswerHint, !answerable);
 
     // Esperando o shell.
@@ -526,7 +531,7 @@ class AgentView {
       setText(this.shellText, shellBoxText(wait));
       const stage = shellStage(now - wait.since);
       setText(this.shellMood, `${stage.emoji} ${stage.text}`);
-      setText(this.shellNext, stage.nextIn !== null ? `Próxima fase em ${formatDuration(Math.max(1_000, stage.nextIn))}` : '');
+      setText(this.shellNext, stage.nextIn !== null ? translate('Próxima fase em {duration}', { duration: formatDuration(Math.max(1_000, stage.nextIn)) }) : '');
       setHidden(this.shellNext, stage.nextIn === null);
       setTitle(this.shellNext, 'Quanto falta para o personagem mudar o que faz enquanto espera (veja a Ajuda)');
     }
@@ -540,14 +545,14 @@ class AgentView {
     // Atividade atual.
     const act = a.activity;
     setText(this.actIcon, act?.icon ?? '·');
-    setText(this.actText, act?.text ?? activityFallback(a));
+    setRawText(this.actText, act ? (act.i18n ? localize({ text: act.text, i18n: act.i18n }) : act.text) : activityFallback(a));
     // A duração só entra quando o texto ainda não a traz ("Concluiu em 33s" já diz quanto levou).
     const showDuration = !!act?.durationMs && act.kind !== 'done' && !/\d\s?(?:ms|s|min|h)\b/.test(act.text);
     setText(this.actTime, act ? `${relativeTime(act.at, now)}${showDuration ? ` · levou ${formatDuration(act.durationMs!)}` : ''}` : '');
     this.actText.classList.toggle('is-error', !!act?.error);
-    const detail = act?.detail ?? '';
+    const detail = act?.detailI18n ? localize({ text: act.detail ?? '', i18n: act.detailI18n }) : act?.detail ?? '';
     setHidden(this.actDetails, !detail);
-    setText(this.actDetail, detail);
+    setRawText(this.actDetail, detail);
 
     // Mandar mensagem: só para principais presentes (com o recurso ligado e a página local; sem o plugin, a dica).
     setHidden(this.msgSec.el, this.composer.render(live, this.id) === 'off');
@@ -568,7 +573,7 @@ class AgentView {
       const subs = sortByUrgency((this.ctx.store.snapshot?.agents ?? []).filter((s) => s.parentId === a.id));
       setText(this.teamSec.title, 'Subagentes');
       setText(this.teamSec.extra, subs.length ? String(subs.length) : '');
-      setText(this.teamEmpty, a.stats.subagents ? `Nenhum ativo agora (${plural(a.stats.subagents, 'disparado', 'disparados')} nesta sessão).` : 'Nenhum subagente disparado ainda.');
+      setText(this.teamEmpty, a.stats.subagents ? translate('Nenhum ativo agora ({count} nesta sessão).', { count: plural(a.stats.subagents, 'disparado', 'disparados') }) : 'Nenhum subagente disparado ainda.');
       setHidden(this.teamEmpty, subs.length > 0);
       this.team.sync(subs);
     } else {
@@ -608,14 +613,14 @@ class AgentView {
         h(
           'div',
           { class: 'ui-ask__q' },
-          q.header ? h('span', { class: 'ui-ask__tag', text: q.header }) : null,
-          h('p', { class: 'ui-ask__question', text: q.question }),
+          q.header ? h('span', { class: 'ui-ask__tag', text: q.header, rawText: true }) : null,
+          h('p', { class: 'ui-ask__question', text: q.question, rawText: true }),
           q.multiSelect ? h('p', { class: 'ui-ask__hint', text: 'Pode escolher mais de uma' }) : null,
           h(
             'ol',
             { class: 'ui-ask__opts' },
             ...q.options.map((o) =>
-              h('li', {}, h('strong', { text: o.label }), o.description ? h('span', { class: 'ui-ask__desc', text: o.description }) : null),
+              h('li', {}, h('strong', { text: o.label, rawText: true }), o.description ? h('span', { class: 'ui-ask__desc', text: o.description, rawText: true }) : null),
             ),
           ),
         ),
@@ -627,7 +632,8 @@ class AgentView {
     const available = !!this.ctx.store.snapshot?.meta.terminal;
     const open = this.terminal.agentId === this.id;
     // aria-disabled (e não disabled): o botão continua focável e a dica do porquê aparece no hover.
-    const enabled = open || (available && live);
+    const supported = !this.last || agentCan(this.last, 'terminal');
+    const enabled = open || (available && live && supported);
     setAttr(this.termBtn, 'aria-disabled', enabled ? null : 'true');
     this.termBtn.classList.toggle('is-disabled', !enabled);
     setAttr(this.termBtn, 'aria-pressed', String(open));
@@ -643,7 +649,7 @@ class AgentView {
             : TERMINAL_UNAVAILABLE_HINT
           : !live
             ? 'O agente já saiu do escritório.'
-            : `Ver a conversa desta sessão como no ${provider === 'codex' ? 'Codex' : 'terminal do Claude Code'}, ao vivo (T)`,
+            : translate('Ver a conversa desta sessão como no {provider}, ao vivo (T)', { provider: providerName(provider) }),
     );
   }
 
@@ -666,8 +672,8 @@ class AgentView {
     st.label('perm', codex ? 'Aprovações' : 'Permissões');
     st.set('perm', a.kind !== 'main' ? null : codex ? (a.permissionMode ? codexApprovalLabel(a.permissionMode) : null) : permissionLabel(a.permissionMode));
 
-    setText(this.sessionValue, a.sessionId);
-    setTitle(this.sessionValue, a.sessionId);
+    setRawText(this.sessionValue, a.sessionId);
+    setRawTitle(this.sessionValue, a.sessionId);
     st.set('start', formatDateTime(a.startedAt));
     st.set('duration', formatDuration(now - a.startedAt));
     st.set('bg', a.background ? 'Em segundo plano' : null);
@@ -817,9 +823,9 @@ class RoomView {
     if (live) this.last = live;
     const r = this.last;
     if (!r) return;
-    setText(this.name, r.name);
-    setText(this.path, shortPath(r.path));
-    setTitle(this.path, r.path);
+    setRawText(this.name, r.name);
+    setRawText(this.path, shortPath(r.path));
+    setRawTitle(this.path, r.path);
     try {
       setStyleVar(this.swatch, '--room', roomTheme(r.seed).accent);
     } catch {

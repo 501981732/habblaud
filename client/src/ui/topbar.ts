@@ -2,6 +2,7 @@
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText, setTitle, setVariant } from './dom';
 import { formatDuration, formatInt } from './format';
+import { getLocale, t } from '../../../shared/i18n';
 import { FALLBACK_MARK, ICONS } from './icons';
 import { computeCounters, shellLine, shellWaitIn, shellWaitingAgents, waitingAgents, type Counters } from './model';
 import { TIMELAPSE_ICONS } from './timelapse';
@@ -169,8 +170,10 @@ export class TopBar implements UiComponent {
       const refs = this.counters.get(def.key)!;
       const n = c[def.key];
       setText(refs.value, formatInt(n));
-      setText(refs.label, n === 1 ? def.singular : def.plural);
-      setAttr(refs.el, 'aria-label', `${formatInt(n)} ${n === 1 ? def.singular : def.plural}`);
+      const label = t(n === 1 ? def.singular : def.plural);
+      setText(refs.label, label);
+      const zhCount = { rooms: '个房间', agents: '个 Agent', working: '个 Agent 正在工作', subagents: '个子 Agent', waiting: '个 Agent 需要你处理' }[def.key];
+      setAttr(refs.el, 'aria-label', getLocale() === 'zh-CN' ? `${formatInt(n)} ${zhCount}` : t('{count} {label}', { count: formatInt(n), label }));
     }
     const waiting = this.counters.get('waiting')!.el as HTMLButtonElement;
     waiting.classList.toggle('is-active', c.waiting > 0);
@@ -178,12 +181,9 @@ export class TopBar implements UiComponent {
     // Pedidos que dá para responder por aqui (hook de permissão: permissões e perguntas): a dica diz quantos.
     const answerable = permissionAgents(snap?.agents ?? []).length;
     waiting.classList.toggle('has-answer', answerable > 0);
-    setTitle(
-      waiting,
-      answerable
-        ? `${WAITING_HINT}. ${answerable === 1 ? '1 pedido (permissão ou pergunta) dá' : `${answerable} pedidos (permissões ou perguntas) dão`} para responder por aqui: clique para ir até ${answerable === 1 ? 'ele' : 'cada um'} (P).`
-        : `${WAITING_HINT}. Clique para ir até o primeiro.`,
-    );
+    setTitle(waiting, answerable
+      ? `${t(WAITING_HINT)}. ${t(answerable === 1 ? '1 pedido (permissão ou pergunta) dá para responder por aqui: clique para ir até ele (P).' : '{n} pedidos (permissões ou perguntas) dão para responder por aqui: clique para ir até cada um (P).', { n: answerable })}`
+      : `${t(WAITING_HINT)}. ${t('Clique para ir até o primeiro.')}`);
     this.renderShells(c.shells, now);
 
     this.usage.render();
@@ -205,16 +205,17 @@ export class TopBar implements UiComponent {
     const all = this.ctx.store.snapshot?.agents ?? [];
     const agents = shellWaitingAgents(all, now);
     setText(refs.value, formatInt(n));
-    setText(refs.label, n === 1 ? 'shell' : 'shells');
-    const who = agents.length === 1 ? agents[0].name : `${formatInt(agents.length)} agentes`;
-    setAttr(refs.el, 'aria-label', `${formatInt(n)} ${n === 1 ? 'shell rodando' : 'shells rodando'}; ${who} esperando. Ir até o próximo.`);
+    const shellLabel = t(n === 1 ? 'shell' : 'shells');
+    setText(refs.label, shellLabel);
+    const who = agents.length === 1 ? agents[0].name : t('{n} agentes', { n: formatInt(agents.length) });
+    setAttr(refs.el, 'aria-label', t('{n} {shells} em execução; {who} aguardando. Ir até o próximo.', { n: formatInt(n), shells: shellLabel, who }));
     // Dica: quem espera o quê, do que espera há mais tempo.
     const lines = agents.slice(0, 6).map((a) => {
       const w = shellWaitIn(a, all, now)!;
-      return `${a.name}: ${shellLine(w, now).label} (${formatDuration(now - w.since)})`;
+      return t('{name}: {label} ({duration})', { name: a.name, label: shellLine(w, now).label, duration: formatDuration(now - w.since) });
     });
     if (agents.length > 6) lines.push(`… e mais ${agents.length - 6}`);
-    setTitle(refs.el, `Shells rodando: ${agents.length === 1 ? 'o agente espera' : 'os agentes esperam'} terminar.\n${lines.join('\n')}\nClique para ir até ${agents.length > 1 ? 'cada um' : 'ele'}.`);
+    setTitle(refs.el, t('Shells rodando: {verb} terminar.\n{lines}\n{action}', { verb: t(agents.length === 1 ? 'o agente espera' : 'os agentes esperam'), lines: lines.join('\n'), action: agents.length > 1 ? t('Clique para ir até cada um.') : t('Clique para ir até ele.') }));
   }
 
   private focusNextShell(): void {

@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { NAME_MAX, parseAppearanceParts, parseCharacterName, parseSeed } from '../../shared/appearance';
 import type { AgentInfo, ModSummary, OfficeSnapshot, SourceInfo, UpdateStatus } from '../../shared/types';
 import type { AccountsService } from '../accounts/service';
+import { readBridgeJson, type NativeBridgeHttpController } from '../bridge/http';
 import { handleCodexEvent } from '../codex/http';
 import type { DayStatsService } from '../history/daystats';
 import type { Office } from '../model/office';
@@ -49,6 +50,7 @@ export interface ApiDeps {
    * não dependem da trava do terminal).
    */
   codexLive?: CodexLive;
+  nativeBridge?: NativeBridgeHttpController;
   /** Renomeia a sala (POST /api/rooms/rename {id, name}; vazio volta ao padrão). Devolve o nome em uso, ou undefined se a sala não existe. */
   renameRoom?: (id: string, name: string) => string | undefined;
   /** Estatísticas do "Meu dia" (GET /api/stats, http/stats.ts). */
@@ -257,6 +259,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           permissions: !!deps.permissions,
           messages: !!deps.messages,
           codexEvents: !!deps.codexLive,
+          nativeBridge: !!deps.nativeBridge,
           updates: updatesSummary(deps.updates?.status()),
           sources: deps.sources(),
           accounts: accounts.allEntries().map((a) =>
@@ -274,6 +277,15 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       else {
         const own = { account: url.searchParams.get('account') || undefined, session: url.searchParams.get('session') || undefined };
         sendJson(res, 200, modSummary(hub.current(), (id) => office.has(id), deps.version, own));
+      }
+      return true;
+    }
+    if (path.startsWith('/api/bridge/')) {
+      if (!deps.terminal || !deps.nativeBridge || !isLoopbackHost(req.headers.host) ||
+          (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: '原生桥仅支持本机访问，且需启用本地终端' });
+      } else {
+        void deps.nativeBridge.handle(req, res, url, readBridgeJson).catch((err) => fail(res, err));
       }
       return true;
     }

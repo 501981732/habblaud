@@ -1,12 +1,15 @@
 // Tradução de chamadas de ferramenta do Claude Code em atividades legíveis (PT-BR).
 // Código puro, usado pelo servidor (transcripts reais) e pelo simulador de demonstração.
-import type { ActivityKind, AskQuestion } from './types';
+import type { ActivityKind, AskQuestion, MessageRef } from './types';
+import { productCopy, type ProductCopy } from './copy';
 
 export interface ActivityDescription {
   kind: ActivityKind;
   icon: string;
   text: string;
+  i18n?: MessageRef;
   detail?: string;
+  detailI18n?: MessageRef;
   questions?: AskQuestion[];
 }
 
@@ -63,15 +66,32 @@ function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
-function make(kind: ActivityKind, icon: string, text: string, detail?: string): ActivityDescription {
+function make(kind: ActivityKind, icon: string, text: string | ProductCopy, detail?: string | ProductCopy): ActivityDescription {
   // Mascara antes de cortar (um segredo cortado ao meio vazaria o começo); o recorte prévio só
   // evita rodar as expressões sobre heredocs enormes.
-  return {
+  const shown = typeof text === 'string' ? text : text.text;
+  const out: ActivityDescription = {
     kind,
     icon,
-    text: truncate(maskSecrets(text.slice(0, MAX_TEXT * 8)), MAX_TEXT),
-    ...(detail ? { detail: truncate(maskSecrets(detail.slice(0, MAX_DETAIL * 4)), MAX_DETAIL) } : {}),
+    text: truncate(maskSecrets(shown.slice(0, MAX_TEXT * 8)), MAX_TEXT),
   };
+  if (typeof text !== 'string') {
+    const params = text.i18n.params;
+    out.i18n = params
+      ? { key: text.i18n.key, params: Object.fromEntries(Object.entries(params).map(([key, value]) => [key, typeof value === 'string' ? truncate(maskSecrets(value.slice(0, MAX_TEXT * 8)), MAX_TEXT) : value])) }
+      : { key: text.i18n.key };
+  }
+  if (detail) {
+    const shownDetail = typeof detail === 'string' ? detail : detail.text;
+    out.detail = truncate(maskSecrets(shownDetail.slice(0, MAX_DETAIL * 4)), MAX_DETAIL);
+    if (typeof detail !== 'string') {
+      const params = detail.i18n.params;
+      out.detailI18n = params
+        ? { key: detail.i18n.key, params: Object.fromEntries(Object.entries(params).map(([key, value]) => [key, typeof value === 'string' ? truncate(maskSecrets(value.slice(0, MAX_DETAIL * 4)), MAX_DETAIL) : value])) }
+        : { key: detail.i18n.key };
+    }
+  }
+  return out;
 }
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|ico|heic)$/i;
@@ -353,7 +373,7 @@ const CURL_VALUED = new Set([
 ]);
 
 /** "Testando a API local (:4763/api/snapshot)" ou "Chamando api.github.com". */
-function describeHttp(args: string[]): string {
+function describeHttp(args: string[]): ProductCopy {
   let target: string | undefined;
   const clean = withoutRedirects(args);
   for (let i = 0; i < clean.length; i++) {
@@ -371,19 +391,19 @@ function describeHttp(args: string[]): string {
       break;
     }
   }
-  if (!target) return 'Fazendo uma requisição HTTP';
+  if (!target) return productCopy('Fazendo uma requisição HTTP');
   let url: URL;
   try {
     url = new URL(/^https?:\/\//i.test(target) ? target : `http://${target}`);
   } catch {
-    return 'Fazendo uma requisição HTTP';
+    return productCopy('Fazendo uma requisição HTTP');
   }
   const host = url.hostname.replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host === '0.0.0.0' || host === '::1' || /^127\./.test(host)) {
     const path = `${url.port ? `:${url.port}` : ''}${url.pathname === '/' && !url.port ? '/' : url.pathname}`;
-    return `${url.pathname.startsWith('/api') ? 'Testando a API local' : 'Testando o servidor local'} (${truncate(path, 22)})`;
+    return productCopy(url.pathname.startsWith('/api') ? 'Testando a API local ({caminho})' : 'Testando o servidor local ({caminho})', { caminho: truncate(path, 22) });
   }
-  return `Chamando ${host.replace(/^www\./, '')}`;
+  return productCopy('Chamando {dominio}', { dominio: host.replace(/^www\./, '') });
 }
 
 /** Descrições em português às vezes vêm prontas no `description` do Bash; em inglês, não servem como texto. */
@@ -443,57 +463,57 @@ function describeWords(w: string[], depth: number): ActivityDescription | undefi
   const prog = basename(w[0]);
   const args = w.slice(1);
   const text = w.join(' ');
-  const mk = (kind: ActivityKind, icon: string, t: string) => make(kind, icon, t);
+  const mk = (kind: ActivityKind, icon: string, t: string | ProductCopy) => make(kind, icon, t);
 
   if (/\b(vitest|jest|pytest|phpunit|mocha|ava|rspec)\b|\b(go|cargo|deno|bun)\s+test\b|playwright\s+test|\b(npm|pnpm|yarn|bun)\s+(run\s+)?test\b|\bnode\s+--test\b|-m\s+(pytest|unittest)\b/.test(text)) {
-    return mk('test', '🧪', 'Rodando testes');
+    return mk('test', '🧪', productCopy('Rodando testes'));
   }
   if (prog === 'git') {
     let i = 0;
     while (i < args.length && args[i].startsWith('-')) i += args[i] === '-C' || args[i] === '-c' ? 2 : 1;
     const sub = args[i] ?? '';
     const [icon, t] = GIT_TEXT[sub] ?? ['🌿', sub ? `git ${sub}` : 'Usando o git'];
-    return mk('git', icon, t);
+    return mk('git', icon, GIT_TEXT[sub] ? productCopy(t) : sub ? productCopy('git {sub}', { sub }) : productCopy('Usando o git'));
   }
-  if (prog === 'gh') return mk('git', '🐙', `GitHub CLI: gh ${args.slice(0, 2).join(' ')}`.trim());
+  if (prog === 'gh') return mk('git', '🐙', productCopy('GitHub CLI: gh {args}', { args: args.slice(0, 2).join(' ') }));
   if (/\b(npm|pnpm|yarn|bun)\s+(i|install|add|ci)\b|\bpip3?\s+install\b|\bbrew\s+install\b|\bcomposer\s+(install|require)\b|\bpoetry\s+(add|install)\b|\bcargo\s+add\b|\bgo\s+get\b|\buv\s+(add|sync|pip\s+install)\b/.test(text)) {
-    return mk('run', '📦', 'Instalando dependências');
+    return mk('run', '📦', productCopy('Instalando dependências'));
   }
   if ((prog === 'tsc' && args.includes('--noEmit')) || /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(typecheck|type-check|check-types)\b/.test(text)) {
-    return mk('run', '🔍', 'Conferindo os tipos (TypeScript)');
+    return mk('run', '🔍', productCopy('Conferindo os tipos (TypeScript)'));
   }
   if (/\b(npm|pnpm|yarn|bun)\s+(run\s+)?build\b|\bvite\s+build\b|^tsc\b|\bwebpack\b|\bcargo\s+build\b|\bgo\s+build\b|^make\b|\bgradle\b|\bmvn\b|\besbuild\b|\brollup\b/.test(text)) {
-    return mk('run', '🏗️', 'Compilando o projeto');
+    return mk('run', '🏗️', productCopy('Compilando o projeto'));
   }
   if (/\b(npm|pnpm|yarn|bun)\s+(run\s+)?(dev|start|serve|preview)\b|^vite(\s|$)(?!build)|^(next|nuxt|astro)\s+dev\b|^expo\s+start\b|^nodemon\b|^tsx\s+watch\b/.test(text)) {
-    return mk('run', '▶️', /\bpreview\b/.test(text) ? 'Subindo o preview do build' : 'Subindo o servidor de dev');
+    return mk('run', '▶️', productCopy(/\bpreview\b/.test(text) ? 'Subindo o preview do build' : 'Subindo o servidor de dev'));
   }
   if (/\b(eslint|prettier|ruff|black|biome|rubocop|phpcs|stylelint|oxlint)\b|\b(npm|pnpm|yarn)\s+(run\s+)?(lint|format)\b/.test(text)) {
-    return mk('run', '🧹', 'Rodando o linter');
+    return mk('run', '🧹', productCopy('Rodando o linter'));
   }
-  if (/^(npm|pnpm|yarn|bun)$/.test(prog) && args[0] === 'run' && args[1]) return mk('run', '▶️', `Rodando o script ${args[1]}`);
-  if (prog === 'docker' || prog === 'docker-compose') return mk('run', '🐳', `Docker: ${args.filter((a) => !a.startsWith('-')).slice(0, 2).join(' ')}`.trim());
-  if (/^(kubectl|helm|terraform|aws|gcloud|az|flyctl|fly|vercel|wrangler|netlify|railway)$/.test(prog)) return mk('run', '☁️', `Mexendo na nuvem (${prog})`);
+  if (/^(npm|pnpm|yarn|bun)$/.test(prog) && args[0] === 'run' && args[1]) return mk('run', '▶️', productCopy('Rodando o script {script}', { script: args[1] }));
+  if (prog === 'docker' || prog === 'docker-compose') return mk('run', '🐳', productCopy('Docker: {command}', { command: args.filter((a) => !a.startsWith('-')).slice(0, 2).join(' ') }));
+  if (/^(kubectl|helm|terraform|aws|gcloud|az|flyctl|fly|vercel|wrangler|netlify|railway)$/.test(prog)) return mk('run', '☁️', productCopy('Mexendo na nuvem ({programa})', { programa: prog }));
   if (/^(curl|wget|http|https|xh)$/.test(prog)) return mk('web', '🌐', describeHttp(args));
-  if (/^(psql|mysql|sqlite3|redis-cli|mongosh|mongo|duckdb)$/.test(prog)) return mk('run', '🗄️', 'Consultando o banco de dados');
+  if (/^(psql|mysql|sqlite3|redis-cli|mongosh|mongo|duckdb)$/.test(prog)) return mk('run', '🗄️', productCopy('Consultando o banco de dados'));
   if (/^(rg|grep|egrep|fgrep|ag|ack|git-grep)$/.test(prog)) {
     const e = args.findIndex((a) => a === '-e' || a === '--regexp');
     const pat = e >= 0 ? args[e + 1] : positionals(args, GREP_VALUED)[0];
     const shown = pat?.replace(/\\\|/g, ' | ').replace(/\\([.()[\]{}+?*^$])/g, '$1');
-    return mk('search', '🔎', shown ? `Buscando “${truncate(shown, 24)}”` : 'Buscando no código');
+    return mk('search', '🔎', shown ? productCopy('Buscando “{busca}”', { busca: truncate(shown, 24) }) : productCopy('Buscando no código'));
   }
-  if (/^(ls|find|tree|fd|du|df|eza|exa)$/.test(prog)) return mk('read', '📂', 'Explorando pastas');
-  if (prog === 'cd' || prog === 'pushd') return mk('read', '📂', 'Mudando de pasta');
+  if (/^(ls|find|tree|fd|du|df|eza|exa)$/.test(prog)) return mk('read', '📂', productCopy('Explorando pastas'));
+  if (prog === 'cd' || prog === 'pushd') return mk('read', '📂', productCopy('Mudando de pasta'));
   if (prog === 'cat' || prog === 'tee' || prog === 'echo' || prog === 'printf') {
     // `cat > arquivo <<EOF`, `cat <<'EOF' >> arquivo`, `echo x > arquivo`, `tee [-a] arquivo`: escrevendo.
     const written = prog === 'tee' ? positionals(args)[0] : stdoutTarget(args);
-    if (written && looksLikeFile(written) && written !== '/dev/null') return mk('write', '📝', `Escrevendo ${basename(written)}`);
-    if (prog === 'tee') return mk('write', '📝', 'Escrevendo um arquivo');
-    if (prog !== 'cat') return mk('run', '💬', 'Mostrando texto no terminal');
+    if (written && looksLikeFile(written) && written !== '/dev/null') return mk('write', '📝', productCopy('Escrevendo {arquivo}', { arquivo: basename(written) }));
+    if (prog === 'tee') return mk('write', '📝', productCopy('Escrevendo um arquivo'));
+    if (prog !== 'cat') return mk('run', '💬', productCopy('Mostrando texto no terminal'));
   }
   if (/^(sed|gsed|perl)$/.test(prog) && args.some((a) => /^-i|^--in-place|^-pi/.test(a))) {
     const last = positionals(args, new Set(['-e', '-f'])).pop();
-    return mk('edit', '✏️', last && looksLikeFile(last) && /[./]/.test(last) ? `Editando ${basename(last)}` : 'Editando via terminal');
+    return mk('edit', '✏️', last && looksLikeFile(last) && /[./]/.test(last) ? productCopy('Editando {arquivo}', { arquivo: basename(last) }) : productCopy('Editando via terminal'));
   }
   if (/^(cat|head|tail|less|more|bat|nl|sed|gsed|awk|gawk|jq|wc|strings|xxd|od|hexdump|column|sort|uniq|cut)$/.test(prog)) {
     // jq --arg nome valor: dois valores.
@@ -504,45 +524,45 @@ function describeWords(w: string[], depth: number): ActivityDescription | undefi
     const label = filesLabel(files);
     if (prog === 'wc') {
       const n = files.filter(looksLikeFile).length;
-      return mk('read', '🔢', n > 2 ? `Contando linhas de ${n} arquivos` : label ? `Contando linhas de ${label}` : 'Contando linhas');
+      return mk('read', '🔢', n > 2 ? productCopy('Contando linhas de {count} arquivos', { count: n }) : label ? productCopy('Contando linhas de {arquivo}', { arquivo: label }) : productCopy('Contando linhas'));
     }
-    if (prog === 'tail' && args.some((a) => a === '-f' || a === '-F')) return mk('read', '📜', label ? `Acompanhando ${label}` : 'Acompanhando um log');
-    if (prog === 'jq' && !label) return mk('read', '🔎', 'Filtrando JSON');
+    if (prog === 'tail' && args.some((a) => a === '-f' || a === '-F')) return mk('read', '📜', label ? productCopy('Acompanhando {arquivo}', { arquivo: label }) : productCopy('Acompanhando um log'));
+    if (prog === 'jq' && !label) return mk('read', '🔎', productCopy('Filtrando JSON'));
     if (/^(sort|uniq|cut|column)$/.test(prog) && !label) return undefined;
-    return mk('read', '📖', label ? `Lendo ${label}` : 'Lendo arquivo');
+    return mk('read', '📖', label ? productCopy('Lendo {arquivo}', { arquivo: label }) : productCopy('Lendo arquivo'));
   }
-  if (/^(rm|mv|cp|mkdir|rmdir|touch|chmod|chown|ln|rsync|tar|zip|unzip|gzip|gunzip|xattr)$/.test(prog)) return mk('run', '🗂️', 'Organizando arquivos');
-  if (prog === 'sleep' || prog === 'wait') return mk('wait', '⏳', 'Aguardando um pouco');
-  if (prog === 'open' || prog === 'xdg-open') return mk('run', '🖥️', 'Abrindo no computador');
-  if (/^(code|cursor|subl|vim|nvim|nano|emacs)$/.test(prog)) return mk('edit', '✏️', 'Abrindo no editor');
-  if (/^(pkill|kill|killall)$/.test(prog)) return mk('run', '🛑', 'Parando um processo');
+  if (/^(rm|mv|cp|mkdir|rmdir|touch|chmod|chown|ln|rsync|tar|zip|unzip|gzip|gunzip|xattr)$/.test(prog)) return mk('run', '🗂️', productCopy('Organizando arquivos'));
+  if (prog === 'sleep' || prog === 'wait') return mk('wait', '⏳', productCopy('Aguardando um pouco'));
+  if (prog === 'open' || prog === 'xdg-open') return mk('run', '🖥️', productCopy('Abrindo no computador'));
+  if (/^(code|cursor|subl|vim|nvim|nano|emacs)$/.test(prog)) return mk('edit', '✏️', productCopy('Abrindo no editor'));
+  if (/^(pkill|kill|killall)$/.test(prog)) return mk('run', '🛑', productCopy('Parando um processo'));
   if (prog === 'lsof') {
     const port = args.map((a) => /^(?:-i)?(?:tcp)?:(\d{2,5})$/i.exec(a)?.[1]).find(Boolean);
-    return mk('run', '🔌', port ? `Conferindo quem usa a porta ${port}` : 'Conferindo processos e portas');
+    return mk('run', '🔌', port ? productCopy('Conferindo quem usa a porta {porta}', { porta: port }) : productCopy('Conferindo processos e portas'));
   }
-  if (/^(ps|pgrep|top|htop|jobs)$/.test(prog)) return mk('run', '🔍', 'Conferindo processos');
-  if (/^(which|whereis|type)$/.test(prog) || (prog === 'command' && /^-[vV]$/.test(args[0] ?? ''))) return mk('search', '🔎', 'Procurando um programa');
-  if (/^(diff|cmp|comm|colordiff|delta)$/.test(prog)) return mk('read', '🔀', 'Comparando arquivos');
-  if (prog === 'date') return mk('run', '🕒', 'Conferindo a data e a hora');
-  if (prog === 'env' || prog === 'printenv') return mk('run', '🔍', 'Conferindo variáveis de ambiente');
-  if (/^(stat|file|md5|md5sum|shasum|sha256sum|realpath|readlink)$/.test(prog)) return mk('read', '🔍', 'Conferindo um arquivo');
-  if (prog === 'claude') return mk('run', '🤖', 'Rodando o Claude Code');
-  if (/^(pbcopy|pbpaste)$/.test(prog)) return mk('run', '📋', 'Usando a área de transferência');
+  if (/^(ps|pgrep|top|htop|jobs)$/.test(prog)) return mk('run', '🔍', productCopy('Conferindo processos'));
+  if (/^(which|whereis|type)$/.test(prog) || (prog === 'command' && /^-[vV]$/.test(args[0] ?? ''))) return mk('search', '🔎', productCopy('Procurando um programa'));
+  if (/^(diff|cmp|comm|colordiff|delta)$/.test(prog)) return mk('read', '🔀', productCopy('Comparando arquivos'));
+  if (prog === 'date') return mk('run', '🕒', productCopy('Conferindo a data e a hora'));
+  if (prog === 'env' || prog === 'printenv') return mk('run', '🔍', productCopy('Conferindo variáveis de ambiente'));
+  if (/^(stat|file|md5|md5sum|shasum|sha256sum|realpath|readlink)$/.test(prog)) return mk('read', '🔍', productCopy('Conferindo um arquivo'));
+  if (prog === 'claude') return mk('run', '🤖', productCopy('Rodando o Claude Code'));
+  if (/^(pbcopy|pbpaste)$/.test(prog)) return mk('run', '📋', productCopy('Usando a área de transferência'));
   if (/^(bash|sh|zsh|fish)$/.test(prog)) {
     const c = args.indexOf('-c');
     if (c >= 0 && args[c + 1] && depth < 3) return describeLine(args[c + 1], depth + 1).desc;
     const script = positionals(args).find(looksLikeFile);
-    return mk('run', '▶️', script ? `Executando ${basename(script)}` : 'Executando um script de shell');
+    return mk('run', '▶️', script ? productCopy('Executando {arquivo}', { arquivo: basename(script) }) : productCopy('Executando um script de shell'));
   }
   if (/^(node|python3?|ruby|php|deno|bun|tsx|ts-node|perl|java)$/.test(prog) || (prog === 'go' && args[0] === 'run')) {
     // Ignora flags, redirecionamentos/heredoc e código inline (-e/-c '...').
     const list = withoutRedirects(prog === 'go' ? args.slice(1) : args);
     const script = list.find((t, i) => !t.startsWith('-') && !/^-[ecpr]$|^--(eval|print|import|require|loader)$/.test(list[i - 1] ?? '') && /[./]/.test(t) && !/^\d+(\.\d+)*$/.test(t));
-    if (script && !/^(-m|-c)$/.test(list[0] ?? '')) return mk('run', '▶️', `Executando ${basename(script)}`);
-    if (list[0] === '-m' && list[1]) return mk('run', '▶️', `Executando o módulo ${list[1]}`);
-    return mk('run', '▶️', `Executando um script ${LANG[prog] ?? prog}`);
+    if (script && !/^(-m|-c)$/.test(list[0] ?? '')) return mk('run', '▶️', productCopy('Executando {arquivo}', { arquivo: basename(script) }));
+    if (list[0] === '-m' && list[1]) return mk('run', '▶️', productCopy('Executando o módulo {modulo}', { modulo: list[1] }));
+    return mk('run', '▶️', productCopy('Executando um script {linguagem}', { linguagem: LANG[prog] ?? prog }));
   }
-  if (/^(\.{0,2}\/|~\/)/.test(w[0]) || /\.(sh|bash|zsh|py|rb|mjs|js|ts)$/.test(w[0])) return mk('run', '▶️', `Executando ${prog}`);
+  if (/^(\.{0,2}\/|~\/)/.test(w[0]) || /\.(sh|bash|zsh|py|rb|mjs|js|ts)$/.test(w[0])) return mk('run', '▶️', productCopy('Executando {programa}', { programa: prog }));
   return undefined;
 }
 
@@ -589,7 +609,7 @@ function describeLine(text: string, depth: number): LineDescription {
       const body = /^(?:do|then)\b\s*(.*)$/s.exec(rest.replace(/^.*?;\s*(?=(do|then)\b)/s, ''))?.[1]?.trim();
       const next = [body, ...lines.slice(li + 1)].filter((l) => l && l.trim() && !/^(done|fi|else|esac)\b/.test(l.trim())).join('\n');
       const inner = next ? describeLine(next, depth + 1) : {};
-      return inner.desc ? inner : { desc: make('run', '🔁', 'Repetindo um comando em lote') };
+      return inner.desc ? inner : { desc: make('run', '🔁', productCopy('Repetindo um comando em lote')) };
     }
     return { desc: describeWords(main, depth), prog: main[0] };
   }
@@ -610,11 +630,11 @@ export function describeCommand(command: string, description?: string): Activity
   } catch {
     found = {}; // comando estranho demais para a heurística: cai no texto genérico
   }
-  if (found.desc) return make(found.desc.kind, found.desc.icon, found.desc.text, detail);
+  if (found.desc) return make(found.desc.kind, found.desc.icon, found.desc.i18n ? { text: found.desc.text, i18n: found.desc.i18n } : found.desc.text, detail);
   const desc = description?.trim();
   if (desc && looksPortuguese(desc)) return make('run', '💻', desc, detail);
   const prog = basename(found.prog ?? '');
-  const text = /^[A-Za-z][\w.+-]{0,23}$/.test(prog) ? `Rodando ${prog}` : 'Rodando um comando no terminal';
+  const text = /^[A-Za-z][\w.+-]{0,23}$/.test(prog) ? productCopy('Rodando {programa}', { programa: prog }) : productCopy('Rodando um comando no terminal');
   return make('run', '💻', text, desc ? `${desc} — ${detail}` : detail);
 }
 
@@ -632,18 +652,18 @@ function describeMcp(name: string, input: Record<string, unknown>): ActivityDesc
   const srv = server.replace(/^claude_ai_/, '');
   if (/playwright|chrome|browser|puppeteer/i.test(srv)) {
     const url = str(input.url);
-    if (/navigate/.test(tool)) return make('browser', '🧭', url ? `Abrindo ${domainOf(url)}` : 'Navegando no navegador', url);
-    if (/screenshot/.test(tool)) return make('browser', '📸', 'Tirando print da página');
-    if (/click/.test(tool)) return make('browser', '🖱️', 'Clicando na página');
-    if (/type|fill|form/.test(tool)) return make('browser', '⌨️', 'Preenchendo formulário');
-    if (/snapshot|read|get_page|find/.test(tool)) return make('browser', '🧭', 'Lendo a página');
-    return make('browser', '🧭', `Navegador: ${humanize(tool)}`);
+    if (/navigate/.test(tool)) return make('browser', '🧭', url ? productCopy('Abrindo {dominio}', { dominio: domainOf(url) }) : productCopy('Navegando no navegador'), url);
+    if (/screenshot/.test(tool)) return make('browser', '📸', productCopy('Tirando print da página'));
+    if (/click/.test(tool)) return make('browser', '🖱️', productCopy('Clicando na página'));
+    if (/type|fill|form/.test(tool)) return make('browser', '⌨️', productCopy('Preenchendo formulário'));
+    if (/snapshot|read|get_page|find/.test(tool)) return make('browser', '🧭', productCopy('Lendo a página'));
+    return make('browser', '🧭', productCopy('Navegador: {ferramenta}', { ferramenta: humanize(tool) }));
   }
-  if (/github/i.test(srv)) return make('mcp', '🐙', `GitHub: ${humanize(tool)}`);
-  if (/gmail|mail/i.test(srv)) return make('mcp', '✉️', `E-mail: ${humanize(tool)}`);
-  if (/drive|docs|notion|confluence/i.test(srv)) return make('mcp', '📄', `${srv}: ${humanize(tool)}`);
-  if (/sql|postgres|mysql|mongo|elastic|redis|db/i.test(srv)) return make('mcp', '🗄️', `Banco (${srv}): ${humanize(tool)}`);
-  return make('mcp', '🔌', `${srv}: ${humanize(tool)}`);
+  if (/github/i.test(srv)) return make('mcp', '🐙', productCopy('GitHub: {ferramenta}', { ferramenta: humanize(tool) }));
+  if (/gmail|mail/i.test(srv)) return make('mcp', '✉️', productCopy('E-mail: {ferramenta}', { ferramenta: humanize(tool) }));
+  if (/drive|docs|notion|confluence/i.test(srv)) return make('mcp', '📄', productCopy('{servidor}: {ferramenta}', { servidor: srv, ferramenta: humanize(tool) }));
+  if (/sql|postgres|mysql|mongo|elastic|redis|db/i.test(srv)) return make('mcp', '🗄️', productCopy('Banco ({servidor}): {ferramenta}', { servidor: srv, ferramenta: humanize(tool) }));
+  return make('mcp', '🔌', productCopy('{servidor}: {ferramenta}', { servidor: srv, ferramenta: humanize(tool) }));
 }
 
 /** Descreve uma chamada de ferramenta do Claude Code. */
@@ -653,117 +673,117 @@ export function describeTool(name: string, rawInput: unknown): ActivityDescripti
 
   switch (name) {
     case 'Read':
-      if (IMAGE_EXT.test(file)) return make('read', '🖼️', `Olhando ${basename(file)}`, file);
-      if (/\.pdf$/i.test(file)) return make('read', '📕', `Lendo ${basename(file)}`, file);
-      return make('read', '📖', file ? `Lendo ${basename(file)}` : 'Lendo arquivo', file);
+      if (IMAGE_EXT.test(file)) return make('read', '🖼️', productCopy('Olhando {arquivo}', { arquivo: basename(file) }), file);
+      if (/\.pdf$/i.test(file)) return make('read', '📕', productCopy('Lendo {arquivo}', { arquivo: basename(file) }), file);
+      return make('read', '📖', file ? productCopy('Lendo {arquivo}', { arquivo: basename(file) }) : productCopy('Lendo arquivo'), file);
     case 'Edit':
     case 'MultiEdit':
-      return make('edit', '✏️', file ? `Editando ${basename(file)}` : 'Editando arquivo', file);
+      return make('edit', '✏️', file ? productCopy('Editando {arquivo}', { arquivo: basename(file) }) : productCopy('Editando arquivo'), file);
     case 'Write':
-      return make('write', '📝', file ? `Escrevendo ${basename(file)}` : 'Escrevendo arquivo', file);
+      return make('write', '📝', file ? productCopy('Escrevendo {arquivo}', { arquivo: basename(file) }) : productCopy('Escrevendo arquivo'), file);
     case 'NotebookEdit':
-      return make('edit', '📓', `Editando notebook ${basename(file)}`, file);
+      return make('edit', '📓', productCopy('Editando notebook {arquivo}', { arquivo: basename(file) }), file);
     case 'Glob':
-      return make('search', '🔎', `Procurando ${truncate(str(input.pattern) || 'arquivos', 30)}`, str(input.pattern));
+      return make('search', '🔎', str(input.pattern) ? productCopy('Procurando {padrao}', { padrao: truncate(str(input.pattern), 30) }) : productCopy('Procurando arquivos'), str(input.pattern));
     case 'Grep': {
       const pat = str(input.pattern);
-      return make('search', '🔎', pat ? `Buscando “${truncate(pat, 26)}”` : 'Buscando no código', pat);
+      return make('search', '🔎', pat ? productCopy('Buscando “{busca}”', { busca: truncate(pat, 26) }) : productCopy('Buscando no código'), pat);
     }
     case 'LS':
-      return make('read', '📂', `Listando ${basename(file) || 'pasta'}`, file);
+      return make('read', '📂', file ? productCopy('Listando {pasta}', { pasta: basename(file) }) : productCopy('Listando pasta'), file);
     case 'Bash':
       return describeCommand(str(input.command), str(input.description));
     case 'BashOutput':
     case 'TaskOutput':
-      return make('run', '📟', 'Conferindo saída do terminal');
+      return make('run', '📟', productCopy('Conferindo saída do terminal'));
     case 'Monitor':
-      return make('run', '📟', 'Monitorando um processo', str(input.description) || str(input.command));
+      return make('run', '📟', productCopy('Monitorando um processo'), str(input.description) || str(input.command));
     case 'KillShell':
     case 'KillBash':
     case 'TaskStop':
-      return make('run', '🛑', 'Parando um processo');
+      return make('run', '🛑', productCopy('Parando um processo'));
     case 'WebSearch': {
       const q = str(input.query);
-      return make('web', '🌐', q ? `Pesquisando “${truncate(q, 28)}”` : 'Pesquisando na web', q);
+      return make('web', '🌐', q ? productCopy('Pesquisando “{busca}”', { busca: truncate(q, 28) }) : productCopy('Pesquisando na web'), q);
     }
     case 'WebFetch': {
       const url = str(input.url);
-      return make('web', '🌐', url ? `Lendo ${domainOf(url)}` : 'Lendo uma página', url);
+      return make('web', '🌐', url ? productCopy('Lendo {dominio}', { dominio: domainOf(url) }) : productCopy('Lendo uma página'), url);
     }
     case 'TodoWrite': {
       const todos = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
       const done = todos.filter((t) => t.status === 'completed').length;
-      return make('plan', '🗒️', 'Atualizando a lista de tarefas', todos.length ? `${done}/${todos.length} concluídas` : undefined);
+      return make('plan', '🗒️', productCopy('Atualizando a lista de tarefas'), todos.length ? productCopy('{done}/{total} concluídas', { done, total: todos.length }) : undefined);
     }
     case 'TaskCreate':
-      return make('plan', '🗒️', `Nova tarefa: ${str(input.subject) || 'sem título'}`, str(input.description));
+      return make('plan', '🗒️', str(input.subject) ? productCopy('Nova tarefa: {titulo}', { titulo: str(input.subject) }) : productCopy('Nova tarefa: sem título'), str(input.description));
     case 'TaskUpdate': {
       const st = str(input.status);
-      if (st === 'completed') return make('plan', '✅', `Concluiu a tarefa #${str(input.taskId)}`);
-      if (st === 'in_progress') return make('plan', '🗒️', `Começou a tarefa #${str(input.taskId)}`);
-      return make('plan', '🗒️', `Atualizando a tarefa #${str(input.taskId)}`);
+      if (st === 'completed') return make('plan', '✅', productCopy('Concluiu a tarefa #{id}', { id: str(input.taskId) }));
+      if (st === 'in_progress') return make('plan', '🗒️', productCopy('Começou a tarefa #{id}', { id: str(input.taskId) }));
+      return make('plan', '🗒️', productCopy('Atualizando a tarefa #{id}', { id: str(input.taskId) }));
     }
     case 'TaskList':
     case 'TaskGet':
-      return make('plan', '🗒️', 'Revisando as tarefas');
+      return make('plan', '🗒️', productCopy('Revisando as tarefas'));
     case 'EnterPlanMode':
-      return make('plan', '🧭', 'Entrando no modo de planejamento');
+      return make('plan', '🧭', productCopy('Entrando no modo de planejamento'));
     case 'ExitPlanMode':
-      return make('plan', '🧭', 'Apresentando o plano');
+      return make('plan', '🧭', productCopy('Apresentando o plano'));
     case 'Agent':
     case 'Task': {
       const d = str(input.description);
       const type = str(input.subagent_type);
-      return make('delegate', '👥', d ? `Delegando: ${d}` : 'Chamando um subagente', [type, str(input.prompt)].filter(Boolean).join(' — '));
+      return make('delegate', '👥', d ? productCopy('Delegando: {descricao}', { descricao: d }) : productCopy('Chamando um subagente'), [type, str(input.prompt)].filter(Boolean).join(' — '));
     }
     case 'Workflow':
-      return make('delegate', '🕸️', 'Orquestrando um workflow');
+      return make('delegate', '🕸️', productCopy('Orquestrando um workflow'));
     case 'StructuredOutput':
-      return make('communicate', '📤', 'Entregando o resultado');
+      return make('communicate', '📤', productCopy('Entregando o resultado'));
     case 'ListAgents':
-      return make('communicate', '👥', 'Conferindo a equipe');
+      return make('communicate', '👥', productCopy('Conferindo a equipe'));
     case 'SendMessage':
-      return make('communicate', '💬', `Mensagem para ${str(input.to) || 'outro agente'}`, str(input.message));
+      return make('communicate', '💬', str(input.to) ? productCopy('Mensagem para {agente}', { agente: str(input.to) }) : productCopy('Mensagem para outro agente'), str(input.message));
     case 'AskUserQuestion': {
       const qs = Array.isArray(input.questions) ? (input.questions as Array<Record<string, unknown>>) : [];
       const questions = askQuestions(qs);
-      return { ...make('ask', '❓', 'Fazendo uma pergunta a você', qs[0] ? str(qs[0].question) : undefined), ...(questions.length ? { questions } : {}) };
+      return { ...make('ask', '❓', productCopy('Fazendo uma pergunta a você'), qs[0] ? str(qs[0].question) : undefined), ...(questions.length ? { questions } : {}) };
     }
     case 'Skill':
-      return make('skill', '🧩', `Usando a skill ${str(input.skill) || str(input.command)}`);
+      return make('skill', '🧩', productCopy('Usando a skill {skill}', { skill: str(input.skill) || str(input.command) }));
     case 'SlashCommand':
-      return make('skill', '⌨️', `Rodando ${str(input.command)}`);
+      return make('skill', '⌨️', productCopy('Rodando {comando}', { comando: str(input.command) }));
     case 'ToolSearch':
-      return make('other', '🧰', 'Procurando ferramentas');
+      return make('other', '🧰', productCopy('Procurando ferramentas'));
     case 'ListMcpResourcesTool':
     case 'ReadMcpResourceTool':
-      return make('mcp', '🔌', 'Lendo recursos MCP');
+      return make('mcp', '🔌', productCopy('Lendo recursos MCP'));
     case 'Artifact':
-      return make('other', '🖼️', 'Publicando uma página');
+      return make('other', '🖼️', productCopy('Publicando uma página'));
     case 'ArtifactData':
     case 'ArtifactComments':
-      return make('other', '🖼️', 'Atualizando uma página publicada');
+      return make('other', '🖼️', productCopy('Atualizando uma página publicada'));
     case 'CronCreate':
     case 'CronDelete':
     case 'CronList':
     case 'ScheduleWakeup':
     case 'RemoteTrigger':
-      return make('plan', '⏰', 'Agendando uma tarefa');
+      return make('plan', '⏰', productCopy('Agendando uma tarefa'));
     case 'EnterWorktree':
     case 'ExitWorktree':
-      return make('git', '🌿', 'Trocando de worktree');
+      return make('git', '🌿', productCopy('Trocando de worktree'));
     case 'PushNotification':
     case 'SendUserFile':
-      return make('communicate', '📣', 'Enviando algo para você');
+      return make('communicate', '📣', productCopy('Enviando algo para você'));
     default:
       if (name.startsWith('mcp__')) return describeMcp(name, input);
-      return make('other', '🛠️', `Usando ${name}`);
+      return make('other', '🛠️', productCopy('Usando {ferramenta}', { ferramenta: name }));
   }
 }
 
 /** Atividade para um prompt do usuário. */
 export function describePrompt(text: string): ActivityDescription {
-  return make('prompt', '📨', `Nova tarefa: “${truncate(text, 30)}”`, text);
+  return make('prompt', '📨', productCopy('Nova tarefa: “{tarefa}”', { tarefa: truncate(text, 30) }), text);
 }
 
 export function formatDuration(ms: number): string {
@@ -791,17 +811,26 @@ export type MarkedDescription = ActivityDescription & { tool: string; error?: bo
  * Rótulo (≤ 46 caracteres) e comando (≤ 300) de um Bash/Monitor que o agente vai esperar, já mascarados.
  * O rótulo é o `description` da ferramenta; sem ele, o resumo do comando ("Rodando testes").
  */
-export function describeShellJob(name: string, rawInput: unknown): { label: string; command?: string; kind: 'shell' | 'monitor' } {
+export function describeShellJob(name: string, rawInput: unknown): { label: string; labelI18n?: MessageRef; command?: string; kind: 'shell' | 'monitor' } {
   const input = (rawInput && typeof rawInput === 'object' ? rawInput : {}) as Record<string, unknown>;
   const kind = name === 'Monitor' ? 'monitor' : 'shell';
   const ws = input.ws && typeof input.ws === 'object' ? str((input.ws as Record<string, unknown>).url) : '';
   const command = str(input.command).trim() || ws.trim();
   const description = str(input.description).trim();
   let label: string;
+  let labelI18n: MessageRef | undefined;
   if (description) label = truncate(maskSecrets(description.slice(0, MAX_TEXT * 8)), MAX_TEXT);
-  else if (kind === 'monitor') label = ws ? `Escutando ${domainOf(ws)}` : 'Monitorando um processo';
-  else label = command ? describeCommand(command).text : 'Comando no terminal';
+  else if (kind === 'monitor') {
+    const copy = ws ? productCopy('Escutando {dominio}', { dominio: domainOf(ws) }) : productCopy('Monitorando um processo');
+    label = copy.text;
+    labelI18n = copy.i18n;
+  } else {
+    const desc = command ? describeCommand(command) : make('run', '💻', productCopy('Comando no terminal'));
+    label = desc.text;
+    labelI18n = desc.i18n;
+  }
   const out: { label: string; command?: string; kind: 'shell' | 'monitor' } = { label, kind };
+  if (labelI18n) (out as { labelI18n?: MessageRef }).labelI18n = labelI18n;
   if (command) out.command = truncate(maskSecrets(command.slice(0, MAX_DETAIL * 4)), MAX_DETAIL);
   return out;
 }
@@ -814,33 +843,33 @@ function fitLabel(prefix: string, label: string | undefined, suffix = ''): strin
 }
 
 export const SPECIAL = {
-  think: (): ActivityDescription => make('think', '💭', 'Pensando…'),
-  respond: (text?: string): ActivityDescription => make('respond', '💬', 'Escrevendo a resposta', text),
-  turnDone: (ms?: number): ActivityDescription => make('done', '✅', ms ? `Concluiu em ${formatDuration(ms)}` : 'Concluiu'),
-  error: (tool?: string, detail?: string): ActivityDescription => make('error', '⚠️', tool ? `Erro em ${tool}` : 'Algo deu errado', detail),
-  interrupted: (): ActivityDescription => make('wait', '✋', 'Interrompido por você'),
-  compact: (): ActivityDescription => make('compact', '🧹', 'Organizando a memória (compactando)'),
-  waiting: (reason?: string): ActivityDescription => make('wait', '✋', reason ? `Precisa de você: ${reason}` : 'Precisa de você'),
-  backgroundResult: (summary?: string): ActivityDescription => make('other', '📬', 'Recebeu resultado em segundo plano', summary),
-  apiRetry: (): ActivityDescription => make('wait', '🔁', 'Instabilidade na API, tentando de novo'),
-  rejected: (tool?: string): ActivityDescription => make('wait', '🚫', tool ? `Você recusou: ${tool}` : 'Você recusou a ação'),
-  cleared: (): ActivityDescription => make('compact', '🧽', 'Começou uma conversa nova (/clear)'),
-  supervising: (): ActivityDescription => make('delegate', '👥', 'Acompanhando os subagentes'),
-  answered: (question?: string): ActivityDescription => make('ask', '💬', 'Recebeu a sua resposta', question),
+  think: (): ActivityDescription => make('think', '💭', productCopy('Pensando…')),
+  respond: (text?: string): ActivityDescription => make('respond', '💬', productCopy('Escrevendo a resposta'), text),
+  turnDone: (ms?: number): ActivityDescription => make('done', '✅', ms ? productCopy('Concluiu em {duracao}', { duracao: formatDuration(ms) }) : productCopy('Concluiu')),
+  error: (tool?: string, detail?: string | ProductCopy): ActivityDescription => make('error', '⚠️', tool ? productCopy('Erro em {ferramenta}', { ferramenta: tool }) : productCopy('Algo deu errado'), detail),
+  interrupted: (): ActivityDescription => make('wait', '✋', productCopy('Interrompido por você')),
+  compact: (): ActivityDescription => make('compact', '🧹', productCopy('Organizando a memória (compactando)')),
+  waiting: (reason?: string): ActivityDescription => make('wait', '✋', reason ? (waitingReasonI18n(reason) ? productCopy(`Precisa de você: ${reason}`) : productCopy('Precisa de você: {motivo}', { motivo: reason })) : productCopy('Precisa de você')),
+  backgroundResult: (summary?: string): ActivityDescription => make('other', '📬', productCopy('Recebeu resultado em segundo plano'), summary),
+  apiRetry: (): ActivityDescription => make('wait', '🔁', productCopy('Instabilidade na API, tentando de novo')),
+  rejected: (tool?: string): ActivityDescription => make('wait', '🚫', tool ? productCopy('Você recusou: {ferramenta}', { ferramenta: tool }) : productCopy('Você recusou a ação')),
+  cleared: (): ActivityDescription => make('compact', '🧽', productCopy('Começou uma conversa nova (/clear)')),
+  supervising: (): ActivityDescription => make('delegate', '👥', productCopy('Acompanhando os subagentes')),
+  answered: (question?: string): ActivityDescription => make('ask', '💬', productCopy('Recebeu a sua resposta'), question),
   /** Balão do status 'shell': "Esperando o shell: <rótulo>" (ou "Esperando 2 shells: ..."). */
-  waitingShell: (label?: string, n = 1, detail?: string): MarkedDescription => ({
-    ...make('wait', '⏳', fitLabel(n > 1 ? `Esperando ${n} shells: ` : 'Esperando o shell: ', label), detail),
+  waitingShell: (label?: string, n = 1, detail?: string, labelI18n?: MessageRef): MarkedDescription => ({
+    ...make('wait', '⏳', { text: fitLabel(n > 1 ? `Esperando ${n} shells: ` : 'Esperando o shell: ', label), i18n: n > 1 ? productCopy(label && !labelI18n ? 'Esperando {count} shells: {rotulo}' : 'Esperando {count} shells', { count: n, rotulo: label ?? '' }).i18n : productCopy(label && !labelI18n ? 'Esperando o shell: {rotulo}' : 'Esperando o shell', { rotulo: label ?? '' }).i18n }, detail),
     tool: SHELL_WAIT_TOOL,
   }),
   /**
    * Fim de um shell em segundo plano (marcador 'ShellDone'): sucesso "Shell terminou: <rótulo> (<duração>)",
    * falha "Shell falhou: <rótulo>" e morto "Shell interrompido: <rótulo>" (os dois com `error`).
    */
-  shellDone: (label: string | undefined, outcome: ShellOutcome, ms?: number, detail?: string): MarkedDescription => {
-    if (outcome === 'failed') return { ...make('run', '❌', fitLabel('Shell falhou: ', label), detail), tool: SHELL_DONE_TOOL, error: true };
-    if (outcome === 'killed') return { ...make('run', '🛑', fitLabel('Shell interrompido: ', label), detail), tool: SHELL_DONE_TOOL, error: true };
+  shellDone: (label: string | undefined, outcome: ShellOutcome, ms?: number, detail?: string | ProductCopy, labelI18n?: MessageRef): MarkedDescription => {
+    if (outcome === 'failed') return { ...make('run', '❌', { text: fitLabel('Shell falhou: ', label), i18n: productCopy(labelI18n ? 'Shell falhou' : 'Shell falhou: {rotulo}', { rotulo: label ?? '' }).i18n }, detail), tool: SHELL_DONE_TOOL, error: true };
+    if (outcome === 'killed') return { ...make('run', '🛑', { text: fitLabel('Shell interrompido: ', label), i18n: productCopy(labelI18n ? 'Shell interrompido' : 'Shell interrompido: {rotulo}', { rotulo: label ?? '' }).i18n }, detail), tool: SHELL_DONE_TOOL, error: true };
     const took = ms !== undefined && ms >= 1_000 ? ` (${formatDuration(ms)})` : '';
-    return { ...make('run', '✅', fitLabel('Shell terminou: ', label, took), detail), tool: SHELL_DONE_TOOL };
+    return { ...make('run', '✅', { text: fitLabel('Shell terminou: ', label, took), i18n: productCopy(labelI18n ? 'Shell terminou{duracao}' : 'Shell terminou: {rotulo}{duracao}', { rotulo: label ?? '', duracao: took }).i18n }, detail), tool: SHELL_DONE_TOOL };
   },
 } as const;
 
@@ -855,4 +884,20 @@ export function describeWaitingFor(raw: string | undefined): string {
   if (/permission|approve|allow/.test(r)) return 'aprovar uma permissão';
   if (/trust/.test(r)) return 'confiar nesta pasta';
   return truncate(raw, 40);
+}
+
+/** Only reasons synthesized by the product; arbitrary session reasons remain raw. */
+export function waitingReasonI18n(reason: string | undefined): MessageRef | undefined {
+  switch (reason) {
+    case 'responder no terminal':
+    case 'responder uma pergunta':
+    case 'aprovar o pedido de um worker':
+    case 'aprovar acesso do sandbox':
+    case 'fechar um diálogo aberto':
+    case 'aprovar uma permissão':
+    case 'confiar nesta pasta':
+      return productCopy(reason).i18n;
+    default:
+      return undefined;
+  }
 }

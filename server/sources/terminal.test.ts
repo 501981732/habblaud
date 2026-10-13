@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import type { TerminalEntry } from '../../shared/types';
+import { localize, setLocale } from '../../shared/i18n';
 import { L } from '../test/fixtures';
-import { createTerminalParser, DETAIL_MAX, INPUT_MAX, RESULT_MAX, RESULT_MAX_LINES, TEXT_MAX, THINKING_MAX } from './terminal';
+import { createTerminalParser, DETAIL_MAX, INPUT_MAX, RESULT_MAX, RESULT_MAX_LINES, TEXT_MAX, THINKING_MAX, toolView } from './terminal';
+
+it('traduz títulos e sistemas gerados sem tocar no conteúdo do usuário', () => {
+  const todo = toolView('TodoWrite', { todos: [{ content: 'Revisar código', status: 'completed' }] });
+  const task = toolView('TaskUpdate', { taskId: '7', status: 'in_progress' });
+  const entries = run([L.prompt('Texto original em português'), L.system('compact_boundary', { compactMetadata: { trigger: 'auto' } })]);
+  setLocale('zh-CN');
+  expect(localize({ text: todo.title, i18n: todo.titleI18n })).toBe('TodoWrite（已完成 1/1 项）');
+  expect(localize({ text: task.title, i18n: task.titleI18n })).toBe('TaskUpdate（#7 → 进行中）');
+  expect(entries[0]).toMatchObject({ kind: 'user', text: 'Texto original em português' });
+  expect(entries[0]).not.toHaveProperty('i18n');
+  const compact = entries.find((e) => e.kind === 'system');
+  expect(compact).toMatchObject({ i18n: { key: 'Conversa compactada automaticamente' } });
+  expect(localize(compact!)).toBe('对话已自动压缩');
+  setLocale('pt-BR');
+});
 
 const T0 = Date.parse('2026-10-06T10:00:00Z');
 // Token falso montado em partes (nada de segredo literal no repositório).

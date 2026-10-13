@@ -1,6 +1,7 @@
 // Modelo de apresentação da UI: agrupamento salas -> agentes -> subagentes, filtros, contadores e rótulos.
 // Funções puras (sem DOM), testadas em ui/model.test.ts.
 import type { AccountInfo, Activity, AgentInfo, AgentStatus, OfficeSnapshot, RoomInfo, ShellJob, TaskItem } from '../../../shared/types';
+import { localize, t } from '../../../shared/i18n';
 import { formatElapsed, normalizeSearch } from './format';
 
 export const STATUS_LABEL: Record<AgentStatus, string> = {
@@ -16,31 +17,31 @@ export const STATUS_LABEL: Record<AgentStatus, string> = {
 const STATUS_URGENCY: Record<AgentStatus, number> = { waiting: 0, shell: 1, working: 2, idle: 3, done: 4, offline: 5 };
 
 export function statusLabel(status: AgentStatus): string {
-  return STATUS_LABEL[status];
+  return t(STATUS_LABEL[status]);
 }
 
 /** Texto da linha de atividade quando o agente ainda não tem nenhuma (ex.: sessão recém-aberta, sem pedido). */
-export function activityFallback(agent: Pick<AgentInfo, 'status' | 'waitingFor'>): string {
+export function activityFallback(agent: Pick<AgentInfo, 'status' | 'waitingFor' | 'waitingForI18n'>): string {
   switch (agent.status) {
     case 'working':
-      return 'Trabalhando…';
+      return t('Trabalhando…');
     case 'waiting':
-      return agent.waitingFor ? `Precisa de você: ${agent.waitingFor}` : 'Precisa de você';
+      return agent.waitingFor ? t('Precisa de você: {reason}', { reason: agent.waitingForI18n ? localize({ text: agent.waitingFor, i18n: agent.waitingForI18n }) : agent.waitingFor }) : t('Precisa de você');
     case 'shell':
-      return 'Esperando o shell terminar';
+      return t('Esperando o shell terminar');
     case 'done':
-      return 'Concluiu a tarefa';
+      return t('Concluiu a tarefa');
     case 'offline':
-      return 'Saindo do escritório';
+      return t('Saindo do escritório');
     default:
-      return 'Aguardando instruções';
+      return t('Aguardando instruções');
   }
 }
 
 /** Selo de papel: "Agente principal" ou o tipo do subagente ("Explore", "Plan"...). */
 export function roleLabel(agent: Pick<AgentInfo, 'kind' | 'role'>): string {
-  if (agent.kind === 'main') return agent.role || 'Agente principal';
-  return agent.role || 'Subagente';
+  if (agent.kind === 'main') return agent.role || t('Agente principal');
+  return agent.role || t('Subagente');
 }
 
 /** Agente ainda "presente" (não está indo embora). */
@@ -192,7 +193,8 @@ export interface ShellLine {
 
 /** Linha de atividade de quem espera um shell: "⏳ <label> · <tempo>" (e "×N" se vários). */
 export function shellLine(wait: ShellWait, now: number): ShellLine {
-  const label = wait.main?.label?.trim() || (wait.foreground ? 'Esperando o comando terminar' : 'Esperando o shell terminar');
+  const main = wait.main;
+  const label = (main?.labelI18n ? localize({ text: main.label, i18n: main.labelI18n }) : main?.label?.trim()) || t(wait.foreground ? 'Esperando o comando terminar' : 'Esperando o shell terminar');
   const time = formatElapsed(now - wait.since);
   const n = wait.jobs.length;
   const count = n > 1 ? `×${n}` : '';
@@ -201,11 +203,11 @@ export function shellLine(wait: ShellWait, now: number): ShellLine {
 
 /** Texto da caixa "Esperando o shell". */
 export function shellBoxText(wait: Pick<ShellWait, 'foreground' | 'jobs'>): string {
-  if (wait.foreground) return 'Está parado num comando no terminal, esperando ele terminar para continuar o turno.';
+  if (wait.foreground) return t('Está parado num comando no terminal, esperando ele terminar para continuar o turno.');
   const n = wait.jobs.length;
   return n > 1
-    ? `Terminou o turno e está esperando ${n} shells terminarem. A cada um que termina, o agente recebe o resultado.`
-    : 'Terminou o turno e está esperando o shell terminar. Quando ele terminar, o agente recebe o resultado.';
+    ? t('Terminou o turno e está esperando {n} shells terminarem. A cada um que termina, o agente recebe o resultado.', { n })
+    : t('Terminou o turno e está esperando o shell terminar. Quando ele terminar, o agente recebe o resultado.');
 }
 
 export type ShellStage = 'popcorn' | 'spin' | 'cobweb' | 'nap';

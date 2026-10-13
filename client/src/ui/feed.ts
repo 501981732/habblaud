@@ -1,9 +1,10 @@
 // Feed de atividade (painel inferior recolhível): últimos eventos do escritório, do mais antigo ao mais recente.
 import { partsKey } from '../../../shared/appearance';
 import type { AgentInfo, FeedItem } from '../../../shared/types';
+import { localize, t } from '../../../shared/i18n';
 import { createAvatar, createAvatarPlaceholder, updateAvatar } from './avatar';
 import type { UiComponent, UiContext } from './context';
-import { h, KeyedList, setAttr, setHidden, setText, setTitle } from './dom';
+import { h, KeyedList, setAttr, setHidden, setRawText, setText, setTitle } from './dom';
 import { formatClock } from './format';
 import { ICONS } from './icons';
 import { shellDoneKind } from './model';
@@ -120,9 +121,9 @@ export class FeedPanel implements UiComponent {
     }
 
     const latest = pending[pending.length - 1] ?? visible[visible.length - 1];
-    setText(this.ticker, latest ? `${latest.agentName}: ${latest.activity.icon} ${latest.activity.text}` : '');
+    setRawText(this.ticker, latest ? `${latest.agentName}: ${latest.activity.icon} ${latest.activity.i18n ? localize({ text: latest.activity.text, i18n: latest.activity.i18n }) : latest.activity.text}` : '');
     this.toggleBtn.innerHTML = open ? ICONS.chevronDown : ICONS.chevronUp;
-    const label = open ? 'Recolher feed ( ] )' : 'Abrir feed ( ] )';
+    const label = t(open ? 'Recolher feed ( ] )' : 'Abrir feed ( ] )');
     setAttr(this.toggleBtn, 'aria-label', label);
     setTitle(this.toggleBtn, label);
     setAttr(this.toggleBtn, 'aria-expanded', String(open));
@@ -193,13 +194,13 @@ export class FeedPanel implements UiComponent {
     setText(time, formatClock(f.activity.at));
     setAttr(time, 'datetime', new Date(f.activity.at).toISOString());
     if (m) updateAvatar(avatar, m, 'xs');
-    setText(who, f.agentName);
+    setRawText(who, f.agentName);
     const acc = this.accountOf(f);
     updateAccountChip(chip, acc ? this.ctx.account(acc) : undefined, acc ?? '');
     setHidden(chip, !acc);
-    setText(room, f.roomName);
+    setRawText(room, f.roomName);
     setText(icon, f.activity.icon);
-    setText(text, f.activity.text);
+    setRawText(text, f.activity.i18n ? localize({ text: f.activity.text, i18n: f.activity.i18n }) : f.activity.text);
     li.classList.toggle('is-error', !!f.activity.error);
     li.classList.toggle('is-social', f.id.startsWith('social:'));
     // Fim de um shell (✅ terminou / ❌ falhou ou foi interrompido): linha com destaque próprio.
@@ -208,7 +209,9 @@ export class FeedPanel implements UiComponent {
     li.classList.toggle('is-shell-fail', done === 'fail');
     const present = !!this.ctx.agent(f.agentId);
     li.classList.toggle('is-gone', !present);
-    setTitle(btn, `${formatClock(f.activity.at)} · ${f.agentName} em ${f.roomName}\n${f.activity.text}${f.activity.detail ? `\n${f.activity.detail}` : ''}`);
+    const activity = f.activity.i18n ? localize({ text: f.activity.text, i18n: f.activity.i18n }) : f.activity.text;
+    const detail = f.activity.detail ? `\n${f.activity.detail}` : '';
+    setTitle(btn, t('{time} · {agent} em {room}\n{activity}{detail}', { time: formatClock(f.activity.at), agent: f.agentName, room: f.roomName, activity, detail }));
   }
 
   private metaFromStore(id: string): AgentMeta | undefined {

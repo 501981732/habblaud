@@ -62,18 +62,18 @@ const pascal = (s: string) => s.replace(/(^|[-_.\s])(\w)/g, (_, __, c: string) =
 // ------------------------------------------------------------------ conteúdo inventado
 
 const THOUGHTS = [
-  'Antes de mexer, vale entender como esse fluxo está montado hoje.',
-  'O mais seguro é cobrir com um teste primeiro e depois ajustar o código.',
-  'Acho que o problema está no cálculo; vou conferir quem chama essa função.',
-  'Dá para resolver com uma mudança pequena, sem quebrar a API existente.',
-  'Preciso checar se outros lugares dependem desse comportamento.',
+  '修改之前，先弄清目前的流程。',
+  '先写测试，再修改代码会更稳妥。',
+  '问题可能出在计算逻辑，我先检查调用方。',
+  '可以用小改动解决，同时保持现有 API。',
+  '需要确认其他地方是否依赖这个行为。',
 ];
 
 const SUMMARIES = [
-  'Pronto! Ajustei o necessário e os testes passaram.',
-  'Feito. A mudança ficou pequena e coberta por testes.',
-  'Concluí a tarefa; deixei tudo verde no build e nos testes.',
-  'Terminei. Se quiser, posso abrir um PR com essas mudanças.',
+  '完成了必要的修改，测试已通过。',
+  '完成了，改动范围较小，并有测试覆盖。',
+  '任务完成，构建和测试都通过了。',
+  '已完成，如需提交，可以创建 PR。',
 ];
 
 /** Trecho de código plausível por extensão (para Read e Write). */
@@ -209,8 +209,8 @@ function shellCall(out: TerminalEntry[], a: Activity, i: number, command: string
   const bg = isBackground(i, ctx);
   const result = bg
     ? ctx.codex
-      ? `Comando rodando em segundo plano (sessão ${num(seed, 1000, 9999)}).`
-      : `Comando rodando em segundo plano (id b${hex(seed)}). Você recebe um aviso quando ele terminar.`
+      ? `命令在后台运行（会话 ${num(seed, 1000, 9999)}）。`
+      : `命令在后台运行（编号 b${hex(seed)}）。完成后会收到通知。`
     : (output ?? commandOutput(command, seed, ctx));
   const firstLine = command.split('\n')[0];
   const tool = ctx.codex ? 'Shell' : 'Bash';
@@ -235,7 +235,7 @@ function entriesFor(a: Activity, i: number, ctx: Ctx, out: TerminalEntry[]): voi
       kind: 'system',
       id: `${a.id}:s`,
       at: a.at,
-      text: failed ? `Tarefa em segundo plano falhou: ${label}` : `Tarefa em segundo plano concluída: ${label}`,
+      text: failed ? `后台任务失败：${label}` : `后台任务完成：${label}`,
       level: failed ? 'warn' : 'info',
       detail: failed ? 'exit code 1' : 'exit code 0',
     });
@@ -243,7 +243,7 @@ function entriesFor(a: Activity, i: number, ctx: Ctx, out: TerminalEntry[]): voi
   }
   if (a.tool === SHELL_WAIT_TOOL) {
     const what = detail ? `\`${detail.split('\n')[0]}\`` : `**${afterColon(a.text)}**`;
-    out.push({ kind: 'assistant', id: `${a.id}:a`, at: a.at, text: `Deixei rodando em segundo plano: ${what}. Volto assim que terminar.` });
+    out.push({ kind: 'assistant', id: `${a.id}:a`, at: a.at, text: `已在后台运行：${what}。完成后我会继续。` });
     return;
   }
   // Mensagem mandada pelo escritório: entra na conversa como um prompt seu.
@@ -256,12 +256,12 @@ function entriesFor(a: Activity, i: number, ctx: Ctx, out: TerminalEntry[]): voi
       out.push({ kind: 'user', id: `${a.id}:u`, at: a.at, text: detail ?? quoted(a.text) ?? a.text });
       return;
     case 'think': {
-      const text = a.text.startsWith('Pensando') ? (seed % 3 === 0 ? undefined : pick(THOUGHTS, seed >>> 3)) : 'Os subagentes terminaram; vou juntar o que cada um encontrou.';
+      const text = a.text.startsWith('Pensando') ? (seed % 3 === 0 ? undefined : pick(THOUGHTS, seed >>> 3)) : '子代理已完成，我来汇总各自的发现。';
       out.push(text ? { kind: 'thinking', id: `${a.id}:k`, at: a.at, text } : { kind: 'thinking', id: `${a.id}:k`, at: a.at });
       return;
     }
     case 'respond':
-      out.push({ kind: 'assistant', id: `${a.id}:a`, at: a.at, text: detail ?? 'Encontrei o ponto do problema; vou ajustar agora.' });
+      out.push({ kind: 'assistant', id: `${a.id}:a`, at: a.at, text: detail ?? '已经找到问题所在，接下来修改代码。' });
       return;
     case 'read': {
       if (!detail?.startsWith('/')) break;
@@ -277,7 +277,7 @@ function entriesFor(a: Activity, i: number, ctx: Ctx, out: TerminalEntry[]): voi
       const [before, after] = editPair(file, seed);
       const lines = [...before.split('\n').map((l) => `- ${l}`), ...after.split('\n').map((l) => `+ ${l}`)];
       if (ctx.codex) patchCall(out, a, file, lines, false);
-      else call(out, a, 'Edit', `Edit(${file})`, `Arquivo atualizado: ${file}`, { input: lines.join('\n'), inputKind: 'diff' });
+      else call(out, a, 'Edit', `Edit(${file})`, `文件已更新：${file}`, { input: lines.join('\n'), inputKind: 'diff' });
       return;
     }
     case 'write': {
@@ -285,7 +285,7 @@ function entriesFor(a: Activity, i: number, ctx: Ctx, out: TerminalEntry[]): voi
       const file = rel(detail, ctx);
       const lines = snippet(file);
       if (ctx.codex) return patchCall(out, a, file, lines, true);
-      call(out, a, 'Write', `Write(${file})`, `Arquivo criado: ${file} (${lines.length} linhas)`, { input: lines.map((l) => `+ ${l}`).join('\n'), inputKind: 'diff' });
+      call(out, a, 'Write', `Write(${file})`, `文件已创建：${file}（${lines.length} 行）`, { input: lines.map((l) => `+ ${l}`).join('\n'), inputKind: 'diff' });
       return;
     }
     case 'search': {
@@ -320,7 +320,7 @@ function entriesFor(a: Activity, i: number, ctx: Ctx, out: TerminalEntry[]): voi
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-|-$/g, '');
-        const results = [`${detail} — guia completo`, `Documentação oficial: ${detail}`, `Discussão no fórum: ${detail}`];
+        const results = [`${detail} — 完整指南`, `官方文档：${detail}`, `论坛讨论：${detail}`];
         const urls = [`https://blog.example.com/${slug}`, `https://docs.example.com/${slug}`, `https://forum.example.com/t/${slug}`];
         const tool = ctx.codex ? 'web_search' : 'WebSearch';
         call(out, a, tool, `${tool}(${detail})`, results.map((r, k) => `${k + 1}. ${r}\n   ${urls[k]}`).join('\n'));
@@ -331,8 +331,8 @@ function entriesFor(a: Activity, i: number, ctx: Ctx, out: TerminalEntry[]): voi
         return;
       }
       if (/^https?:\/\//.test(detail)) {
-        call(out, a, 'WebFetch', `WebFetch(${detail})`, 'A página explica a API com exemplos; o trecho relevante confirma o formato esperado.', {
-          input: 'Resuma o que importa para a nossa implementação',
+        call(out, a, 'WebFetch', `WebFetch(${detail})`, '页面提供了 API 示例，相关内容确认了预期格式。', {
+          input: '总结与当前实现相关的要点',
           inputKind: 'text',
         });
         return;
@@ -344,15 +344,15 @@ function entriesFor(a: Activity, i: number, ctx: Ctx, out: TerminalEntry[]): voi
       const [done = 0, total = ctx.agent.tasks.length] = (/(\d+)\/(\d+)/.exec(detail ?? '') ?? []).slice(1).map(Number);
       const list = ctx.agent.tasks.slice(0, total || undefined).map((t, k) => `${k < done ? '☒' : k === done ? '◐' : '☐'} ${t.title}`);
       const tool = ctx.codex ? 'update_plan' : 'TodoWrite';
-      call(out, a, tool, total ? `${tool}(${done}/${total} concluídas)` : tool, ctx.codex ? 'Plan updated' : 'Lista de tarefas atualizada', list.length ? { input: list.join('\n'), inputKind: 'text' } : undefined);
+      call(out, a, tool, total ? `${tool}(${done}/${total} 已完成)` : tool, '任务列表已更新', list.length ? { input: list.join('\n'), inputKind: 'text' } : undefined);
       return;
     }
     case 'delegate': {
       const desc = afterColon(a.text);
       const type = ctx.codex ? 'worker' : detail?.split(' — ')[0];
       const tool = ctx.codex ? 'spawn_agent' : 'Agent';
-      call(out, a, tool, `${tool}(${type ? `${type}: ` : ''}${desc})`, 'Subagentes trabalhando em paralelo; os resultados chegam quando terminarem.', {
-        input: `${desc}. Investigue o código de ${ctx.project} e devolva um resumo curto com os arquivos envolvidos.`,
+      call(out, a, tool, `${tool}(${type ? `${type}: ` : ''}${desc})`, '子代理正在并行工作，完成后会返回结果。', {
+        input: `${desc}。调查 ${ctx.project} 的代码，并简要汇报相关文件。`,
         inputKind: 'text',
       });
       return;
@@ -363,32 +363,32 @@ function entriesFor(a: Activity, i: number, ctx: Ctx, out: TerminalEntry[]): voi
         id: `${a.id}:s`,
         at: a.at,
         text: a.text.startsWith('Precisa de você')
-          ? `Aguardando você: ${a.text.includes(':') ? afterColon(a.text) : 'responder no terminal'}`
+          ? `等待你的操作：${({ 'aprovar uma permissão': '批准权限', 'responder uma pergunta': '回答问题', 'aprovar um comando': '批准命令' } as Record<string, string>)[afterColon(a.text)] ?? afterColon(a.text)}`
           : a.text.startsWith('Interrompido')
-            ? 'Interrompido pelo usuário'
+            ? '已由用户中断'
             : a.text,
         level: 'warn',
       });
       return;
     case 'done': {
-      const text = ctx.agent.kind === 'sub' && ctx.agent.title ? `Entrega: ${ctx.agent.title}. Resumo enviado ao agente principal.` : pick(SUMMARIES, seed);
+      const text = ctx.agent.kind === 'sub' && ctx.agent.title ? `交付：${ctx.agent.title}。摘要已发送给主代理。` : pick(SUMMARIES, seed);
       out.push({ kind: 'assistant', id: `${a.id}:a`, at: a.at, text });
       const took = /Concluiu em (.+)$/.exec(a.text)?.[1];
-      if (took) out.push({ kind: 'system', id: `${a.id}:s`, at: a.at, text: `Turno concluído em ${took}`, level: 'info' });
+      if (took) out.push({ kind: 'system', id: `${a.id}:s`, at: a.at, text: `本轮完成，用时 ${took}`, level: 'info' });
       return;
     }
     case 'error':
-      out.push({ kind: 'system', id: `${a.id}:s`, at: a.at, text: a.text, level: 'error', ...(detail ? { detail } : {}) });
+      out.push({ kind: 'system', id: `${a.id}:s`, at: a.at, text: a.text, ...(a.i18n ? { i18n: a.i18n } : {}), level: 'error', ...(detail ? { detail } : {}), ...(a.detailI18n ? { detailI18n: a.detailI18n } : {}) });
       return;
     case 'compact':
-      out.push({ kind: 'system', id: `${a.id}:s`, at: a.at, text: 'Conversa compactada automaticamente', level: 'info' });
+      out.push({ kind: 'system', id: `${a.id}:s`, at: a.at, text: '对话已自动压缩', level: 'info' });
       return;
     default:
       break;
   }
   // Qualquer outra coisa: uma ferramenta genérica com o detalhe como argumento.
   const tool = a.tool ?? TOOL_BY_KIND[a.kind] ?? 'Ferramenta';
-  call(out, a, tool, detail ? `${tool}(${detail.split('\n')[0]})` : tool, '✓ Concluído');
+  call(out, a, tool, detail ? `${tool}(${detail.split('\n')[0]})` : tool, '✓ 已完成');
 }
 
 const TOOL_BY_KIND: Partial<Record<Activity['kind'], string>> = {

@@ -1,43 +1,55 @@
 // Formatação em PT-BR (tempos, números, uso). Funções puras: sem DOM, testadas em ui/format.test.ts.
+import { getLocale, t } from '../../../shared/i18n';
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-const LOCALE = 'pt-BR';
-
-const numberFmt1 = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 });
-const integerFmt = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 });
-const usdFmt = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const clockFmt = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' });
-const clockSecFmt = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-const weekdayFmt = new Intl.DateTimeFormat(LOCALE, { weekday: 'short' });
-const dateTimeFmt = new Intl.DateTimeFormat(LOCALE, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+const cache = new Map<string, Intl.NumberFormat | Intl.DateTimeFormat>();
+function numberFmt(key: string, options: Intl.NumberFormatOptions): Intl.NumberFormat {
+  const id = `${getLocale()}:n:${key}`;
+  let f = cache.get(id) as Intl.NumberFormat | undefined;
+  if (!f) { f = new Intl.NumberFormat(getLocale(), options); cache.set(id, f); }
+  return f;
+}
+function dateFmt(key: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const id = `${getLocale()}:d:${key}`;
+  let f = cache.get(id) as Intl.DateTimeFormat | undefined;
+  if (!f) { f = new Intl.DateTimeFormat(getLocale(), options); cache.set(id, f); }
+  return f;
+}
+const numberFmt1 = () => numberFmt('decimal1', { maximumFractionDigits: 1 });
+const integerFmt = () => numberFmt('integer', { maximumFractionDigits: 0 });
+const usdFmt = () => numberFmt('usd', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const clockFmt = () => dateFmt('clock', { hour: '2-digit', minute: '2-digit' });
+const clockSecFmt = () => dateFmt('clocksec', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const weekdayFmt = () => dateFmt('weekday', { weekday: 'short' });
+const dateTimeFmt = () => dateFmt('datetime', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 /** Tempo relativo no passado: "agora", "há 5 s", "há 3 min", "há 2 h", "há 4 d". */
 export function relativeTime(at: number, now: number): string {
   const diff = now - at;
-  if (!Number.isFinite(diff) || diff < 5 * SECOND) return 'agora';
-  if (diff < MINUTE) return `há ${Math.floor(diff / SECOND)} s`;
-  if (diff < HOUR) return `há ${Math.floor(diff / MINUTE)} min`;
-  if (diff < DAY) return `há ${Math.floor(diff / HOUR)} h`;
-  return `há ${Math.floor(diff / DAY)} d`;
+  if (!Number.isFinite(diff) || diff < 5 * SECOND) return t('agora');
+  if (diff < MINUTE) return t('há {n} s', { n: Math.floor(diff / SECOND) });
+  if (diff < HOUR) return t('há {n} min', { n: Math.floor(diff / MINUTE) });
+  if (diff < DAY) return t('há {n} h', { n: Math.floor(diff / HOUR) });
+  return t('há {n} d', { n: Math.floor(diff / DAY) });
 }
 
 /** Duração legível: "12 s", "3 min", "2 h 10 min", "3 d 4 h". */
 export function formatDuration(ms: number): string {
   const v = Math.max(0, ms);
-  if (v < MINUTE) return `${Math.floor(v / SECOND)} s`;
-  if (v < HOUR) return `${Math.floor(v / MINUTE)} min`;
+  if (v < MINUTE) return t('{n} s', { n: Math.floor(v / SECOND) });
+  if (v < HOUR) return t('{n} min', { n: Math.floor(v / MINUTE) });
   if (v < DAY) {
     const h = Math.floor(v / HOUR);
     const m = Math.floor((v % HOUR) / MINUTE);
-    return m ? `${h} h ${m} min` : `${h} h`;
+    return m ? t('{h} h {m} min', { h, m }) : t('{h} h', { h });
   }
   const d = Math.floor(v / DAY);
   const h = Math.floor((v % DAY) / HOUR);
-  return h ? `${d} d ${h} h` : `${d} d`;
+  return h ? t('{d} d {h} h', { d, h }) : t('{d} d', { d });
 }
 
 /**
@@ -57,9 +69,9 @@ export function formatElapsed(ms: number): string {
 /** Contagem regressiva: "em 2 h 10 min", "em 5 min", "em menos de 1 min", "agora". */
 export function formatCountdown(target: number, now: number): string {
   const diff = target - now;
-  if (diff <= 0) return 'agora';
-  if (diff < MINUTE) return 'em menos de 1 min';
-  return `em ${formatDuration(diff)}`;
+  if (diff <= 0) return t('agora');
+  if (diff < MINUTE) return t('em menos de 1 min');
+  return t('em {duration}', { duration: formatDuration(diff) });
 }
 
 function startOfDay(t: number): number {
@@ -79,26 +91,26 @@ export function calendarDayDiff(t: number, now: number): number {
  */
 export function formatResetAt(resetsAt: number, now: number): string {
   if (!Number.isFinite(resetsAt) || resetsAt <= now) return '';
-  const time = clockFmt.format(resetsAt);
+  const time = clockFmt().format(resetsAt);
   const days = calendarDayDiff(resetsAt, now);
-  if (days <= 0) return `às ${time}`;
-  if (days === 1) return `amanhã às ${time}`;
-  return `${weekdayFmt.format(resetsAt)}, ${time}`;
+  if (days <= 0) return t('às {time}', { time });
+  if (days === 1) return t('amanhã às {time}', { time });
+  return t('{weekday}, {time}', { weekday: weekdayFmt().format(resetsAt), time });
 }
 
 /** Duração compacta para espaços mínimos: "45s", "29min", "1h29", "2h", "3d4h". */
 export function compactDuration(ms: number): string {
   const v = Math.max(0, ms);
-  if (v < MINUTE) return `${Math.floor(v / SECOND)}s`;
-  if (v < HOUR) return `${Math.floor(v / MINUTE)}min`;
+  if (v < MINUTE) return t('{n}s', { n: Math.floor(v / SECOND) });
+  if (v < HOUR) return t('{n}min', { n: Math.floor(v / MINUTE) });
   if (v < DAY) {
     const h = Math.floor(v / HOUR);
     const m = Math.floor((v % HOUR) / MINUTE);
-    return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+    return getLocale() === 'zh-CN' ? (m ? `${h}小时${String(m).padStart(2, '0')}分` : `${h}小时`) : (m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`);
   }
   const d = Math.floor(v / DAY);
   const h = Math.floor((v % DAY) / HOUR);
-  return h ? `${d}d${h}h` : `${d}d`;
+  return getLocale() === 'zh-CN' ? (h ? `${d}天${h}小时` : `${d}天`) : (h ? `${d}d${h}h` : `${d}d`);
 }
 
 export const FIVE_HOURS_MS = 5 * HOUR;
@@ -130,19 +142,19 @@ export function usageWindowView(win: { utilization: number; resetsAt?: number } 
     return {
       pct: null,
       renewed: true,
-      reset: 'renovada',
-      resetShort: 'renovada',
-      summary: 'renovada depois da última leitura (uso atual desconhecido)',
+      reset: t('renovada'),
+      resetShort: t('renovada'),
+      summary: t('renovada depois da última leitura (uso atual desconhecido)'),
     };
   }
   const pct = clampPercent(win.utilization);
-  if (resetsAt === undefined) return { pct, renewed: false, reset: '', resetShort: '', summary: `${pct}% usado` };
+  if (resetsAt === undefined) return { pct, renewed: false, reset: '', resetShort: '', summary: t('{pct}% usado', { pct }) };
   const diff = resetsAt - now;
   let reset: string;
   if (diff < DAY) reset = formatCountdown(resetsAt, now);
   else {
-    const time = clockFmt.format(resetsAt);
-    reset = calendarDayDiff(resetsAt, now) === 1 ? `amanhã, ${time}` : `${weekdayFmt.format(resetsAt)}, ${time}`;
+    const time = clockFmt().format(resetsAt);
+    reset = calendarDayDiff(resetsAt, now) === 1 ? t('amanhã, {time}', { time }) : t('{weekday}, {time}', { weekday: weekdayFmt().format(resetsAt), time });
   }
   const at = formatResetAt(resetsAt, now);
   return {
@@ -150,36 +162,36 @@ export function usageWindowView(win: { utilization: number; resetsAt?: number } 
     renewed: false,
     reset,
     resetShort: compactDuration(diff),
-    summary: `${pct}% usado · reinicia ${at} (${formatCountdown(resetsAt, now)})`,
+    summary: t('{pct}% usado · reinicia {at} ({countdown})', { pct, at, countdown: formatCountdown(resetsAt, now) }),
   };
 }
 
 /** "14:30:05" */
 export function formatClock(at: number, withSeconds = true): string {
-  return (withSeconds ? clockSecFmt : clockFmt).format(at);
+  return (withSeconds ? clockSecFmt() : clockFmt()).format(at);
 }
 
 /** "06 de out., 14:30" */
 export function formatDateTime(at: number): string {
-  return dateTimeFmt.format(at);
+  return dateTimeFmt().format(at);
 }
 
 /** Tokens compactos: "850", "12,3 k", "1,2 M". */
 export function formatTokens(n: number): string {
   const v = Math.max(0, n);
-  if (v < 1_000) return integerFmt.format(v);
-  if (v < 1_000_000) return `${numberFmt1.format(v / 1_000)} k`;
-  return `${numberFmt1.format(v / 1_000_000)} M`;
+  if (v < 1_000) return integerFmt().format(v);
+  if (v < 1_000_000) return `${numberFmt1().format(v / 1_000)}${getLocale() === 'zh-CN' ? '千' : ' k'}`;
+  return `${numberFmt1().format(v / 1_000_000)}${getLocale() === 'zh-CN' ? '百万' : ' M'}`;
 }
 
 /** Número inteiro com separador de milhar: "12.345". */
 export function formatInt(n: number): string {
-  return integerFmt.format(n);
+  return integerFmt().format(n);
 }
 
 /** Custo em dólares: "US$ 1,23". */
 export function formatUSD(n: number): string {
-  return usdFmt.format(n).replace(/ /g, ' ');
+  return usdFmt().format(n).replace(/ /g, ' ');
 }
 
 /** Percentual de uso limitado a 0–100 e arredondado. */
@@ -199,6 +211,13 @@ export function usageLevel(utilization: number): UsageLevel {
 
 /** "1 agente", "3 agentes" */
 export function plural(n: number, singular: string, pluralForm: string): string {
+  if (getLocale() === 'zh-CN') {
+    const labels: Record<string, string> = {
+      agente: '个 Agent', subagente: '个子 Agent', sessão: '个会话', sala: '个房间', espera: '次等待',
+      vitória: '胜', derrota: '负', disparado: '个已派发', ferramenta: '个工具调用', 'tarefa concluída': '个已完成任务',
+    };
+    return `${integerFmt().format(n)}${labels[singular] ?? ` ${singular}`}`;
+  }
   return `${formatInt(n)} ${n === 1 ? singular : pluralForm}`;
 }
 

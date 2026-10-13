@@ -8,7 +8,7 @@
 // Término: <task-notification> (queue-operation 'enqueue', mensagem user ou anexo) casando task-id
 // ou tool-use-id; TaskStop/KillShell/KillBash com o id; fim de turno/interrupção (só os em primeiro
 // plano); /clear ou sessão encerrada (rastreador descartado); idade.
-import type { ShellJob } from '../../shared/types';
+import type { MessageRef, ShellJob } from '../../shared/types';
 import type { ShellOutcome } from '../../shared/activity';
 
 /** Jobs mais velhos que isso são descartados (o processo certamente já morreu ou a notificação se perdeu). */
@@ -30,6 +30,7 @@ const RECENT_END_MS = 120_000;
 export interface ShellStart {
   toolUseId: string;
   label: string;
+  labelI18n?: MessageRef;
   command?: string;
   /** run_in_background (Bash) ou Monitor. */
   background: boolean;
@@ -45,6 +46,7 @@ export interface TrackedShell {
   toolUseId: string;
   taskId?: string;
   label: string;
+  labelI18n?: MessageRef;
   command?: string;
   background: boolean;
   kind: 'shell' | 'monitor';
@@ -110,6 +112,7 @@ export class ShellTracker {
       owner,
       toolUseId: s.toolUseId,
       label: s.label,
+      ...(s.labelI18n ? { labelI18n: s.labelI18n } : {}),
       background: s.background,
       kind: s.kind,
       startedAt: s.at,
@@ -333,6 +336,7 @@ export class ShellTracker {
 /** ShellJob publicado (sem os campos internos). */
 export function toShellJob(j: TrackedShell): ShellJob {
   const job: ShellJob = { id: j.taskId ?? j.toolUseId, label: j.label, startedAt: j.startedAt, background: j.background, kind: j.kind };
+  if (j.labelI18n) job.labelI18n = j.labelI18n;
   if (j.command) job.command = j.command;
   return job;
 }

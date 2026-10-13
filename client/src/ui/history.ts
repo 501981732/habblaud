@@ -5,11 +5,12 @@
 // puros e testados em ui/history.test.ts; a montagem usa só textContent. Sessões do Codex vêm com o selo "Codex" e a
 // busca acha "codex".
 import type { RecentSession } from '../../../shared/types';
+import { getLocale, t } from '../../../shared/i18n';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText, setTitle } from './dom';
 import { calendarDayDiff, formatClock, formatDateTime, normalizeSearch, plural, shortPath } from './format';
 import { ICONS } from './icons';
-import { isCodex } from './provider';
+import { providerName, providerOf } from './provider';
 import { sessionProjectName, TERMINAL_UNAVAILABLE_HINT, type TerminalControl } from './terminal';
 import { createAccountChip, updateAccountChip } from './widgets';
 
@@ -17,7 +18,7 @@ export const HISTORY_URL = '/api/sessions/recent';
 /** Fechou (clique fora) há tão pouco que o mesmo clique no botão não deve reabrir. */
 const REOPEN_GUARD_MS = 250;
 
-const weekdayDateFmt = new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+const weekdayDateFmt = () => new Intl.DateTimeFormat(getLocale(), { weekday: 'short', day: '2-digit', month: 'short' });
 
 // ---------------------------------------------------------------- modelo (puro)
 
@@ -47,7 +48,7 @@ export function parseRecentSessions(raw: unknown): RecentSession[] {
     const firstAt = num(o.firstAt);
     const agentId = str(o.agentId);
     // Ausente = Claude Code (nunca grava 'claude').
-    if (o.provider === 'codex') s.provider = 'codex';
+    if (o.provider === 'codex' || o.provider === 'dsh' || o.provider === 'pi') s.provider = o.provider;
     if (project) s.project = project;
     if (title) s.title = title;
     if (firstAt !== undefined) s.firstAt = firstAt;
@@ -65,7 +66,7 @@ export function filterSessions(list: readonly RecentSession[], query: string, ac
   const terms = normalizeSearch(query).split(/\s+/).filter(Boolean);
   if (!terms.length) return list.slice();
   return list.filter((s) => {
-    const hay = normalizeSearch([s.title ?? '', s.project ?? '', s.projectDir, accountLabel(s.account), isCodex(s) ? 'Codex' : ''].join(' '));
+    const hay = normalizeSearch([s.title ?? '', s.project ?? '', s.projectDir, accountLabel(s.account), providerName(providerOf(s))].join(' '));
     return terms.every((t) => hay.includes(t));
   });
 }
@@ -73,9 +74,9 @@ export function filterSessions(list: readonly RecentSession[], query: string, ac
 /** Rótulo do dia: "Hoje", "Ontem" ou "seg., 05 de out.". */
 export function dayLabel(at: number, now: number): string {
   const diff = calendarDayDiff(at, now);
-  if (diff === 0) return 'Hoje';
-  if (diff === -1) return 'Ontem';
-  const label = weekdayDateFmt.format(at);
+  if (diff === 0) return t('Hoje');
+  if (diff === -1) return t('Ontem');
+  const label = weekdayDateFmt().format(at);
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
@@ -243,7 +244,7 @@ export class HistoryPopover implements UiComponent {
     setAttr(this.button, 'aria-disabled', available ? null : 'true');
     this.button.classList.toggle('is-disabled', !available);
     setTitle(this.button, available ? 'Histórico de sessões (últimos 7 dias)' : TERMINAL_UNAVAILABLE_HINT);
-    setAttr(this.button, 'aria-label', available ? 'Histórico de sessões' : `Histórico de sessões: ${TERMINAL_UNAVAILABLE_HINT}`);
+    setAttr(this.button, 'aria-label', available ? t('Histórico de sessões') : t('Histórico de sessões: {reason}', { reason: t(TERMINAL_UNAVAILABLE_HINT) }));
     if (!this.isOpen) return;
     if (!available) return this.hide();
     this.renderList();
@@ -315,23 +316,24 @@ export class HistoryPopover implements UiComponent {
     const title = s.title?.trim() || 'Sessão sem título';
     const project = sessionProjectName(s);
     const live = s.open && !!s.agentId && !!this.ctx.agent(s.agentId);
-    const codex = isCodex(s);
+    const provider = providerOf(s);
+    const providerLabel = provider === 'claude' ? '' : providerName(provider);
     const meta = h(
       'span',
       { class: 'ui-hist__meta' },
-      codex ? h('span', { class: 'ui-prov ui-prov--xs', text: 'Codex' }) : null,
-      h('span', { class: 'ui-hist__project', text: project }),
+      providerLabel ? h('span', { class: 'ui-prov ui-prov--xs', text: providerLabel, rawText: true }) : null,
+      h('span', { class: 'ui-hist__project', text: project, rawText: true }),
       h('span', { class: 'ui-hist__time', text: formatClock(s.lastAt, false) }),
     );
     if (live) meta.append(h('span', { class: 'ui-hist__live', text: 'aberta' }));
-    const btn = h('button', { class: `ui-hist__item${live ? ' is-live' : ''}`, type: 'button' }, chip, h('span', { class: 'ui-hist__text' }, h('span', { class: 'ui-hist__title', text: title }), meta));
+    const btn = h('button', { class: `ui-hist__item${live ? ' is-live' : ''}`, type: 'button' }, chip, h('span', { class: 'ui-hist__text' }, h('span', { class: 'ui-hist__title', text: title, rawText: true }), meta));
     btn.dataset.session = `${s.account}:${s.sessionId}`;
     const when = s.firstAt !== undefined && calendarDayDiff(s.firstAt, s.lastAt) !== 0 ? `${formatDateTime(s.firstAt)} → ${formatDateTime(s.lastAt)}` : s.firstAt !== undefined ? `${formatDateTime(s.firstAt)} → ${formatClock(s.lastAt, false)}` : formatDateTime(s.lastAt);
     setTitle(
       btn,
-      [title, shortPath(s.project ?? s.projectDir), `${account?.name ?? s.account}${codex ? ' (Codex)' : ''} · ${when} · ${formatSize(s.size)}`, live ? 'Ainda aberta: abre o terminal ao vivo do agente' : 'Encerrada: abre a conversa no terminal'].join('\n'),
+      [title, shortPath(s.project ?? s.projectDir), `${account?.name ?? s.account}${providerLabel ? ` (${providerLabel})` : ''} · ${when} · ${formatSize(s.size)}`, t(live ? 'Ainda aberta: abre o terminal ao vivo do agente' : 'Encerrada: abre a conversa no terminal')].join('\n'),
     );
-    setAttr(btn, 'aria-label', `${title}, ${project}, ${account?.name ?? s.account}${codex ? ', Codex' : ''}, ${live ? 'aberta' : `última atividade ${dayLabel(s.lastAt, now).toLowerCase()} às ${formatClock(s.lastAt, false)}`}`);
+    setAttr(btn, 'aria-label', t('{title}, {project}, {account}, {when}', { title, project, account: `${account?.name ?? s.account}${providerLabel ? `, ${providerLabel}` : ''}`, when: live ? t('aberta') : t('última atividade {day} às {time}', { day: dayLabel(s.lastAt, now), time: formatClock(s.lastAt, false) }) }));
     btn.addEventListener('click', () => {
       this.hide();
       this.terminal.openSession(s, this.button);

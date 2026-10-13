@@ -74,7 +74,7 @@ const SHELL_END_HELP: [string, string][] = [
 ];
 
 const INTRO =
-  'Cada projeto aberto no Claude Code ou no Codex vira uma sala (os dois no mesmo projeto dividem a sala), e cada sessão aberta é um personagem com nome próprio. ' +
+  'Cada projeto aberto no Claude Code, Codex, DeepSeek Harness ou Pi vira uma sala (as ferramentas no mesmo projeto dividem a sala), e cada sessão aberta é um personagem com nome próprio. ' +
   'Subagentes chegam como colegas novos, trabalham na mesma sala e vão embora quando terminam. ' +
   'Quando a última sessão de uma sala é fechada, quem sai apaga a luz e a sala é desmontada.';
 
@@ -143,7 +143,7 @@ export class HelpDialog {
             h('li', { text: 'Clique em um personagem ou sala para ver os detalhes; duplo clique aproxima a câmera.' }),
             h('li', { text: 'Passe o mouse sobre um personagem para ver o que ele está fazendo.' }),
             h('li', {
-              text: 'Nos detalhes de um agente, “Abrir terminal” mostra a conversa da sessão como no Claude Code (ou no Codex), ao vivo (precisa do acesso local, bind 127.0.0.1).',
+              text: 'Nos detalhes de um agente, “Abrir terminal” mostra a conversa ao vivo do Claude Code, Codex, DeepSeek Harness ou Pi (precisa do acesso local, bind 127.0.0.1).',
             }),
             h('li', {
               text: 'Com o plugin habblaud-mensagens (npm run mod:install), dá para mandar mensagens ao agente principal pelos detalhes dele ou pela caixa no rodapé do terminal: o texto entra na sessão como se você o tivesse digitado. Enter manda, Shift+Enter quebra a linha.',
@@ -159,6 +159,10 @@ export class HelpDialog {
         ),
         this.usageSection(),
         this.codexSection(),
+        h('section', { class: 'ui-help__usage' },
+          h('h3', { text: 'DeepSeek Harness e Pi' }),
+          h('p', { text: 'O DeepSeek Harness e o Pi aparecem como personagens próprios quando suas integrações estão instaladas. O modelo exibido é o configurado na ferramenta, como GLM no DeepSeek Harness.' }),
+          h('p', { text: 'Mensagens e permissões aparecem aqui apenas quando a integração ativa oferece essas ações. O histórico usa a sessão da própria ferramenta; textos de prompts e respostas permanecem no idioma original.' })),
       ),
     );
     // Clique no fundo (fora do conteúdo) fecha.

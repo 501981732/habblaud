@@ -9,7 +9,8 @@
 import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
 import { SPECIAL } from '../../shared/activity';
-import type { Activity, AgentStatus, SourceInfo } from '../../shared/types';
+import { productCopy } from '../../shared/copy';
+import type { Activity, AgentStatus, MessageRef, SourceInfo } from '../../shared/types';
 import type { AccountsService } from '../accounts/service';
 import { errMsg, log } from '../log';
 import type { Office, TranscriptSummary } from '../model/office';
@@ -378,9 +379,11 @@ export class ClaudeWatcher implements AgentSource {
     if (!office.has(owner) || (owner !== t.key && office.isSubDone(owner))) owner = t.key;
     const exit = fin.summary ? /exit code (-?\d+)/i.exec(fin.summary)?.[1] : undefined;
     const detail = [exit !== undefined ? `Código de saída ${exit}` : undefined, job.command].filter(Boolean).join(' — ') || fin.summary;
-    const input: { id: string; label: string; startedAt: number; command?: string } = { id: job.taskId ?? job.toolUseId, label: job.label, startedAt: job.startedAt };
+    const input: { id: string; label: string; labelI18n?: MessageRef; startedAt: number; command?: string } = { id: job.taskId ?? job.toolUseId, label: job.label, startedAt: job.startedAt };
+    if (job.labelI18n) input.labelI18n = job.labelI18n;
     if (job.command) input.command = job.command;
-    office.shellDone(owner, input, fin.outcome, fin.at, detail ? { live, summary: detail } : { live });
+    const summaryI18n = exit !== undefined ? productCopy(job.command ? 'Código de saída {codigo} — {comando}' : 'Código de saída {codigo}', { codigo: exit, comando: job.command ?? '' }).i18n : undefined;
+    office.shellDone(owner, input, fin.outcome, fin.at, detail ? { live, summary: detail, ...(summaryI18n ? { summaryI18n } : {}) } : { live });
   }
 
   private newTracker(key: string, accountId: string, dir: string, entry: RegistryEntry): SessionTracker {

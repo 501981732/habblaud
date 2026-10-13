@@ -2,7 +2,7 @@
 // (RoomInfo.effect), com os horários do servidor convertidos para o relógio do navegador, e a
 // comemoração dos personagens no começo da festa. O desenho (confete, giroflex, tom vermelho no
 // chão, faixa e balão "!") fica em render/github-fx.ts.
-import type { RoomInfo } from '../../../../shared/types';
+import type { RoomEffect, RoomInfo } from '../../../../shared/types';
 import { hash32 } from '../../../../shared/hash';
 import { inRect } from '../layout/geometry';
 import type { Character } from './character';
@@ -13,6 +13,7 @@ export interface RoomFx {
   roomId: string;
   kind: 'party' | 'alarm';
   text: string;
+  i18n?: RoomEffect['i18n'];
   /** Agente responsável (quem abriu/mergeou; quem viu o CI falhar). */
   agentId?: string;
   /** `at` do servidor: identifica o efeito (outro valor = efeito novo, a animação recomeça). */
@@ -54,11 +55,12 @@ export class RoomFxState {
       if (cur && cur.key === e.at && cur.kind === e.kind) {
         cur.end = end;
         cur.text = e.text;
+        cur.i18n = e.i18n;
         cur.agentId = e.agentId;
         continue;
       }
       const elapsed = Math.max(0, Math.min(serverTime - e.at, e.until - e.at));
-      this.active.set(r.id, { roomId: r.id, kind: e.kind, text: e.text, agentId: e.agentId, key: e.at, start: now - elapsed, end, cheered: new Set() });
+      this.active.set(r.id, { roomId: r.id, kind: e.kind, text: e.text, i18n: e.i18n, agentId: e.agentId, key: e.at, start: now - elapsed, end, cheered: new Set() });
     }
     for (const [id, fx] of [...this.active]) if (!seen.has(id) && !fx.sticky) this.active.delete(id);
   }

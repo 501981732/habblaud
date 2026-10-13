@@ -7,6 +7,7 @@
 // - > 25 min  ('nap'):      cochila na mesa, coberto de teia.
 // Sempre: ampulheta virando acima da cabeça, monitor em 'progress' e balão "⏳ <rótulo> · <tempo>".
 import type { Activity, AgentStatus, ShellJob } from '../../../../shared/types';
+import { t } from '../../../../shared/i18n';
 import type { Dir, IconName } from '../../art/api';
 
 export type ShellStage = 'popcorn' | 'restless' | 'cobweb' | 'nap';
@@ -121,8 +122,8 @@ export function shellLabel(a: { status: AgentStatus; shells?: ShellJob[] }): str
   const j = oldestShell(a.shells, fg);
   const label = j?.label?.trim();
   if (label) return label;
-  if (j?.kind === 'monitor') return 'Monitorando um processo';
-  return fg ? 'Comando no terminal' : 'Comando em segundo plano';
+  if (j?.kind === 'monitor') return t('Monitorando um processo');
+  return fg ? t('Comando no terminal') : t('Comando em segundo plano');
 }
 
 /**
@@ -146,12 +147,12 @@ export function latestShellDone(a: { activity?: Activity; recent?: readonly Acti
 /** Tempo de espera em PT-BR: "45 s", "3 min", "1 h 05". */
 export function formatShellAge(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return `${s} s`;
+  if (s < 60) return t('{n} s', { n: s });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m} min`;
+  if (m < 60) return t('{n} min', { n: m });
   const h = Math.floor(m / 60);
   const mm = m % 60;
-  return `${h} h ${mm < 10 ? '0' : ''}${mm}`;
+  return mm ? t('{h} h {m}', { h, m: String(mm).padStart(2, '0') }) : t('{h} h', { h });
 }
 
 /**

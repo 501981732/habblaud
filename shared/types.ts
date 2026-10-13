@@ -14,7 +14,20 @@ export type AgentKind = 'main' | 'sub';
  * - claude: Claude Code;
  * - codex: OpenAI Codex (CLI `codex` e o app desktop, que gravam no mesmo CODEX_HOME).
  */
-export type Provider = 'claude' | 'codex';
+export type Provider = 'claude' | 'codex' | 'dsh' | 'pi';
+
+/** Product copy can be rendered in the viewer's language; raw transcripts remain untouched. */
+export interface MessageRef {
+  key: string;
+  params?: Record<string, string | number>;
+}
+
+export interface AgentCapabilities {
+  messages?: boolean;
+  permissions?: boolean;
+  history?: boolean;
+  terminal?: boolean;
+}
 
 /**
  * Estado de alto nível de um agente — é o que dirige o comportamento do personagem.
@@ -35,6 +48,7 @@ export interface ShellJob {
   id: string;
   /** Texto curto em PT-BR: a descrição do Bash ou um resumo do comando (segredos mascarados). */
   label: string;
+  labelI18n?: MessageRef;
   /** Comando completo (mascarado, até ~300 caracteres), quando houver. */
   command?: string;
   /** Epoch ms em que o comando começou. */
@@ -78,8 +92,10 @@ export interface Activity {
   icon: string;
   /** Texto curto em PT-BR (até ~46 caracteres). Ex.: "Editando App.tsx". */
   text: string;
+  i18n?: MessageRef;
   /** Detalhe opcional (comando completo, caminho, consulta...), até ~300 caracteres. */
   detail?: string;
+  detailI18n?: MessageRef;
   /** Nome bruto da ferramenta, quando houver. */
   tool?: string;
   /** Epoch ms. */
@@ -135,6 +151,7 @@ export interface AgentInfo {
   kind: AgentKind;
   /** Ferramenta do agente; ausente = 'claude'. */
   provider?: Provider;
+  capabilities?: AgentCapabilities;
   /** Para subagentes: id do agente que o disparou. */
   parentId?: string;
   roomId: string;
@@ -152,6 +169,7 @@ export interface AgentInfo {
   status: AgentStatus;
   /** Motivo em PT-BR quando status === 'waiting'. Ex.: "aprovar uma permissão". */
   waitingFor?: string;
+  waitingForI18n?: MessageRef;
   /** Atividade atual (ou a mais recente). */
   activity?: Activity;
   /** Últimas atividades, da mais antiga para a mais recente (máx. ~30). */
@@ -217,6 +235,7 @@ export interface RoomEffect {
   kind: 'party' | 'alarm';
   /** Faixa curta em PT-BR. Ex.: "PR #12 mergeado!", "CI falhou (feat/x)". */
   text: string;
+  i18n?: MessageRef;
   /** Início (epoch ms, relógio do servidor): um efeito novo tem outro `at`. */
   at: number;
   /** Fim previsto (epoch ms, relógio do servidor). */
@@ -377,6 +396,7 @@ export interface Notice {
   id: string;
   level: NoticeLevel;
   text: string;
+  i18n?: MessageRef;
   agentId?: string;
   roomId?: string;
   at: number;
@@ -458,11 +478,11 @@ export type TerminalEntry =
    * Chamada de ferramenta. `id` = id do tool_use. `title` no estilo do Claude Code: "Bash(npm test)",
    * "Read(server/index.ts)". `input` = argumentos relevantes (comando, diff...), quando houver.
    */
-  | { kind: 'tool'; id: string; at: number; tool: string; title: string; input?: string; inputKind?: TerminalInputKind }
+  | { kind: 'tool'; id: string; at: number; tool: string; title: string; titleI18n?: MessageRef; input?: string; inputKind?: TerminalInputKind }
   /** Resultado de uma ferramenta. `truncated` = o texto foi cortado (resultado longo demais). */
-  | { kind: 'result'; id: string; at: number; toolUseId: string; text: string; error?: boolean; truncated?: boolean }
+  | { kind: 'result'; id: string; at: number; toolUseId: string; text: string; resultI18n?: MessageRef; error?: boolean; truncated?: boolean }
   /** Evento da sessão: compactação, interrupção, resultado em segundo plano, erro da API... */
-  | { kind: 'system'; id: string; at: number; text: string; detail?: string; level?: 'info' | 'warn' | 'error' };
+  | { kind: 'system'; id: string; at: number; text: string; i18n?: MessageRef; detail?: string; detailI18n?: MessageRef; level?: 'info' | 'warn' | 'error' };
 
 /** Evento `init` do stream do terminal: a conversa recente (substitui tudo o que o cliente tiver). */
 export interface TerminalInit {
@@ -544,9 +564,11 @@ export interface PermissionRequestInfo {
   tool: string;
   /** Título no estilo do Claude Code: "Bash(npm test)", "Edit(src/app.ts)". Mascarado e cortado. */
   title: string;
+  titleI18n?: MessageRef;
   /** Resumo em PT-BR (ex.: "Rodando os testes") e o ícone da atividade. */
   text: string;
   icon: string;
+  i18n?: MessageRef;
   /** Argumentos (comando, diff, JSON...), mascarados e truncados. */
   input?: string;
   inputKind?: TerminalInputKind;

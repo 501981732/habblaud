@@ -1,8 +1,9 @@
 // Avisos rápidos (toasts) no canto inferior direito da área livre (acima do feed, à esquerda da gaveta).
 import type { Notice, NoticeLevel } from '../../../shared/types';
+import { localize } from '../../../shared/i18n';
 import { createAvatar } from './avatar';
 import type { UiComponent, UiContext } from './context';
-import { h, iconButton, prefersReducedMotion, setHidden, setText } from './dom';
+import { h, iconButton, prefersReducedMotion, setHidden, setRawText, setText } from './dom';
 import { ICONS } from './icons';
 import { focusPermission } from './permission';
 
@@ -16,6 +17,7 @@ interface Toast {
   notice: Notice;
   el: HTMLElement;
   count: HTMLElement;
+  textEl: HTMLElement;
   /** "Responder" (alertas de quem tem pedido de permissão para responder pelo escritório). */
   answer?: HTMLButtonElement;
   repeats: number;
@@ -68,6 +70,7 @@ export class Toasts implements UiComponent {
   /** Alertas somem quando o agente deixa de esperar (ou sai do escritório). */
   render(): void {
     for (const t of [...this.toasts]) {
+      setRawText(t.textEl, t.notice.i18n ? localize({ text: t.notice.text, i18n: t.notice.i18n }) : t.notice.text);
       if (t.notice.level !== 'alert' || !t.notice.agentId) continue;
       const a = this.ctx.agent(t.notice.agentId);
       if (!a || a.status !== 'waiting') this.dismiss(t);
@@ -79,11 +82,12 @@ export class Toasts implements UiComponent {
   private create(n: Notice, key: string): Toast {
     const agent = n.agentId ? this.ctx.agent(n.agentId) : undefined;
     const count = h('span', { class: 'ui-toast__count', hidden: true });
+    const textEl = h('span', { class: 'ui-toast__text', text: n.i18n ? localize({ text: n.text, i18n: n.i18n }) : n.text, rawText: true });
     const body = h(
       'button',
       { class: 'ui-toast__body', type: 'button', title: n.agentId || n.roomId ? 'Mostrar no escritório' : '' },
       agent ? createAvatar(agent, 'xs') : null,
-      h('span', { class: 'ui-toast__text', text: n.text }),
+      textEl,
       count,
     );
     body.addEventListener('click', () => {
@@ -91,7 +95,7 @@ export class Toasts implements UiComponent {
       else if (n.roomId && this.ctx.store.room(n.roomId)) this.ctx.select({ type: 'room', id: n.roomId }, { focus: true });
     });
     const el = h('div', { class: `ui-toast ui-toast--${n.level}`, role: n.level === 'alert' ? 'alert' : 'status' }, body);
-    const toast: Toast = { key, notice: n, el, count, repeats: 1, timer: null, remaining: 0, startedAt: 0 };
+    const toast: Toast = { key, notice: n, el, count, textEl, repeats: 1, timer: null, remaining: 0, startedAt: 0 };
     if (n.level === 'alert' && n.agentId) {
       const id = n.agentId;
       toast.answer = h('button', { class: 'ui-toast__answer', type: 'button', text: 'Responder', title: 'Responder pelo escritório (aprovar, recusar ou responder a pergunta)', hidden: !agent?.permission, on: { click: () => focusPermission(this.ctx, id) } });

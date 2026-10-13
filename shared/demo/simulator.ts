@@ -14,7 +14,8 @@
 // às versões sem o Codex (a 2ª sessão muda de sala, e os agentes do Codex não sorteiam custo). Vale sempre: a mesma
 // semente gera o mesmo escritório.
 import type { AccountInfo, AccountUsage, Activity, AgentInfo, FeedItem, Notice, OfficeSnapshot, PermissionDecision, RoomInfo, ShellJob, TaskItem } from '../types';
-import { describePrompt, describeShellJob, describeTool, SHELL_DONE_TOOL, SHELL_WAIT_TOOL, SPECIAL, type ActivityDescription, type ShellOutcome } from '../activity';
+import { describePrompt, describeShellJob, describeTool, SHELL_DONE_TOOL, SHELL_WAIT_TOOL, SPECIAL, waitingReasonI18n, type ActivityDescription, type ShellOutcome } from '../activity';
+import { productCopy, type ProductCopy } from '../copy';
 import { answerSummary, ASK_TOOL, checkAnswers } from '../answers';
 import { describeGitHubEvent, GITHUB_TOOL, RoomEffects } from '../github';
 import { hash32, mulberry32 } from '../hash';
@@ -39,8 +40,8 @@ const PROJECTS: DemoProject[] = [
   {
     name: 'loja-virtual',
     files: ['src/pages/Checkout.tsx', 'src/components/Cart.tsx', 'src/api/orders.ts', 'src/hooks/useCart.ts', 'src/styles/theme.css', 'tests/cart.test.ts', 'package.json'],
-    prompts: ['Cria a página de checkout com resumo do pedido', 'O total do carrinho não atualiza ao remover item', 'Adiciona cupom de desconto no checkout', 'Melhora o layout mobile da vitrine'],
-    tasks: ['Criar página de checkout', 'Validar formulário de endereço', 'Integrar cálculo de frete', 'Escrever testes do carrinho', 'Ajustar layout mobile'],
+    prompts: ['创建带订单摘要的结算页', '移除商品后购物车总价没有更新', '在结算页加入优惠券', '优化商品展示页的移动端布局'],
+    tasks: ['创建结算页', '验证收货地址表单', '接入运费计算', '编写购物车测试', '调整移动端布局'],
     queries: ['react checkout form validation', 'cálculo de frete correios api'],
     commands: ['npm test', 'npm run build', 'git status', 'git diff', 'npm run lint', 'git commit -m "feat: checkout"'],
     greps: ['useCart', 'calculateTotal', 'TODO'],
@@ -48,8 +49,8 @@ const PROJECTS: DemoProject[] = [
   {
     name: 'api-pagamentos',
     files: ['src/routes/payments.ts', 'src/services/pix.ts', 'src/db/migrations/004_refunds.sql', 'src/middleware/auth.ts', 'tests/pix.test.ts', 'docker-compose.yml'],
-    prompts: ['Implementa estorno de pagamentos via Pix', 'Os webhooks estão duplicando cobranças, investiga', 'Adiciona rate limit nas rotas públicas'],
-    tasks: ['Mapear fluxo de estorno', 'Criar migration de refunds', 'Implementar rota POST /refunds', 'Idempotência nos webhooks', 'Cobrir com testes'],
+    prompts: ['实现 Pix 支付退款', '排查 webhook 重复扣款', '为公开接口加入限流'],
+    tasks: ['梳理退款流程', '新增退款数据库迁移', '实现 POST /refunds 接口', '确保 webhook 幂等', '补齐测试'],
     queries: ['pix devolução api bacen', 'idempotency key webhook best practices'],
     commands: ['npm test', 'docker compose up -d db', 'psql -c "select count(*) from payments"', 'git status', 'curl -s http://localhost:3000/health'],
     greps: ['webhook', 'idempotencyKey', 'refund'],
@@ -57,8 +58,8 @@ const PROJECTS: DemoProject[] = [
   {
     name: 'app-mobile',
     files: ['app/screens/Home.tsx', 'app/screens/Profile.tsx', 'app/navigation/index.tsx', 'app/services/api.ts', 'app.json'],
-    prompts: ['Cria a tela de perfil com foto e edição', 'A navegação trava ao voltar da tela de detalhes', 'Adiciona modo escuro no app'],
-    tasks: ['Criar tela de perfil', 'Upload de foto', 'Corrigir navegação', 'Tema escuro'],
+    prompts: ['创建可上传照片和编辑资料的个人页面', '从详情页返回时导航卡住了', '为应用加入深色模式'],
+    tasks: ['创建个人资料页', '上传照片', '修复导航', '深色主题'],
     queries: ['react native navigation goBack freeze', 'expo image picker permissions'],
     commands: ['npx expo start', 'npm test', 'git status', 'npm install react-native-reanimated'],
     greps: ['navigation.goBack', 'useTheme'],
@@ -66,8 +67,8 @@ const PROJECTS: DemoProject[] = [
   {
     name: 'data-pipeline',
     files: ['pipelines/ingest.py', 'pipelines/transform.py', 'dags/daily_report.py', 'requirements.txt', 'tests/test_transform.py'],
-    prompts: ['O relatório diário está vindo com datas erradas', 'Adiciona deduplicação na ingestão', 'Otimiza a transformação que está lenta'],
-    tasks: ['Investigar fuso horário', 'Corrigir parse de datas', 'Deduplicar eventos', 'Testes de regressão'],
+    prompts: ['日报日期不正确，请排查', '在数据摄取时去重', '优化速度较慢的数据转换'],
+    tasks: ['排查时区问题', '修复日期解析', '去重事件', '回归测试'],
     queries: ['pandas tz_convert daylight saving', 'airflow dag catchup false'],
     commands: ['pytest -q', 'python pipelines/ingest.py --dry-run', 'pip install -r requirements.txt', 'git status'],
     greps: ['tz_localize', 'drop_duplicates'],
@@ -75,8 +76,8 @@ const PROJECTS: DemoProject[] = [
   {
     name: 'site-institucional',
     files: ['src/pages/index.astro', 'src/components/Hero.astro', 'src/content/blog/lancamento.md', 'astro.config.mjs', 'public/robots.txt'],
-    prompts: ['Cria a seção de depoimentos na home', 'Melhora o SEO das páginas do blog', 'Adiciona formulário de contato'],
-    tasks: ['Seção de depoimentos', 'Meta tags do blog', 'Sitemap', 'Formulário de contato'],
+    prompts: ['在首页加入用户评价区', '优化博客页面的 SEO', '添加联系表单'],
+    tasks: ['用户评价区', '博客 Meta 标签', '站点地图', '联系表单'],
     queries: ['astro sitemap integration', 'schema.org organization json-ld'],
     commands: ['npm run build', 'npm run dev', 'git status', 'npx lighthouse http://localhost:4321'],
     greps: ['<meta', 'description'],
@@ -84,8 +85,8 @@ const PROJECTS: DemoProject[] = [
   {
     name: 'chatbot-suporte',
     files: ['bot/handlers/faq.ts', 'bot/llm/prompt.ts', 'bot/integrations/zendesk.ts', 'bot/index.ts', 'tests/faq.test.ts'],
-    prompts: ['O bot não está encaminhando para humano', 'Adiciona integração com o Zendesk', 'Melhora o prompt para respostas mais curtas'],
-    tasks: ['Regra de escalonamento', 'Cliente Zendesk', 'Ajustar prompt', 'Testes de conversa'],
+    prompts: ['机器人没有转接人工客服，请排查', '接入 Zendesk', '调整提示词，让回复更简短'],
+    tasks: ['转接规则', 'Zendesk 客户端', '调整提示词', '对话测试'],
     queries: ['zendesk tickets api create', 'llm handoff to human patterns'],
     commands: ['npm test', 'npm run dev', 'git status', 'git push'],
     greps: ['handoff', 'escalate'],
@@ -97,14 +98,14 @@ export const DEMO_PROJECT_NAMES: readonly string[] = PROJECTS.map((p) => p.name)
 
 const SUB_TYPES = ['Explore', 'general-purpose', 'Plan', 'code-reviewer', 'test-runner'];
 const SUB_TASKS = [
-  'Mapear arquivos envolvidos',
-  'Revisar código existente',
-  'Pesquisar documentação',
-  'Rodar suíte de testes',
-  'Investigar causa do bug',
-  'Propor plano de implementação',
-  'Verificar cobertura de testes',
-  'Analisar logs de erro',
+  '梳理相关文件',
+  '审查现有代码',
+  '查阅文档',
+  '运行测试套件',
+  '排查错误原因',
+  '提出实现方案',
+  '检查测试覆盖率',
+  '分析错误日志',
 ];
 const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-fable-5-1'];
 /** Modelos das sessões do Codex. */
@@ -116,21 +117,21 @@ const CODEX_SHARE = 30;
 
 /** Comandos que os agentes deixam rodando em segundo plano (e encerram o turno esperando). */
 const BACKGROUND_JOBS: Array<{ description: string; command: string }> = [
-  { description: 'Rodar a suíte de testes', command: 'npm test -- --runInBand' },
-  { description: 'Build de produção', command: 'npm run build -- --mode production' },
-  { description: 'Migração do banco', command: 'npm run db:migrate && npm run db:seed' },
-  { description: 'Rodar os testes de integração', command: 'pytest -q tests/integration' },
-  { description: 'Gerar o relatório completo', command: 'python pipelines/report.py --full' },
-  { description: 'Subir os containers', command: 'docker compose up --build --wait' },
-  { description: 'Testes de ponta a ponta', command: 'npx playwright test' },
-  { description: 'Auditoria de desempenho', command: 'npx lighthouse http://localhost:4321 --quiet' },
+  { description: '运行测试套件', command: 'npm test -- --runInBand' },
+  { description: '构建生产版本', command: 'npm run build -- --mode production' },
+  { description: '迁移数据库', command: 'npm run db:migrate && npm run db:seed' },
+  { description: '运行集成测试', command: 'pytest -q tests/integration' },
+  { description: '生成完整报告', command: 'python pipelines/report.py --full' },
+  { description: '启动容器', command: 'docker compose up --build --wait' },
+  { description: '端到端测试', command: 'npx playwright test' },
+  { description: '性能审查', command: 'npx lighthouse http://localhost:4321 --quiet' },
 ];
 /** Comandos demorados em primeiro plano (o agente fica parado esperando o resultado). */
 const FOREGROUND_JOBS: Array<{ description: string; command: string }> = [
-  { description: 'Instalar as dependências', command: 'npm ci' },
-  { description: 'Rodar os testes do módulo', command: 'npm test -- src/api' },
-  { description: 'Compilar o projeto', command: 'npm run build' },
-  { description: 'Baixar a imagem do banco', command: 'docker pull postgres:17' },
+  { description: '安装依赖', command: 'npm ci' },
+  { description: '运行模块测试', command: 'npm test -- src/api' },
+  { description: '构建项目', command: 'npm run build' },
+  { description: '拉取数据库镜像', command: 'docker pull postgres:17' },
 ];
 /** Chance de, ao fim de um turno, deixar um shell em segundo plano rodando. */
 const SHELL_CHANCE = 0.35;
@@ -144,8 +145,8 @@ type DemoAccount = Omit<AccountInfo, 'sessions' | 'usage' | 'usageStatus'>;
 // No ?mock=1 as contas imitam o cenário real (C e D no Claude Code, mais uma do Codex). Misturado aos dados reais
 // no servidor (idPrefix), o demo usa contas próprias, inconfundíveis com as de verdade.
 const DEMO_ACCOUNTS: DemoAccount[] = [
-  { id: '.claude', short: 'C', name: 'Conta C', email: 'dev@empresa.example', organization: 'Empresa', plan: 'Max', color: '#f08a3c', configDir: '~/.claude' },
-  { id: '.claude-conta2', short: 'D', name: 'Conta D', email: 'dev@pessoal.example', plan: 'Max', color: '#4aa8e8', configDir: '~/.claude-conta2' },
+  { id: '.claude', short: 'C', name: '账户 C', email: 'dev@empresa.example', organization: '示例公司', plan: 'Max', color: '#f08a3c', configDir: '~/.claude' },
+  { id: '.claude-conta2', short: 'D', name: '账户 D', email: 'dev@pessoal.example', plan: 'Max', color: '#4aa8e8', configDir: '~/.claude-conta2' },
 ];
 /** Conta do Codex (um CODEX_HOME): sem e-mail (o Habblaud não lê credenciais), com o plano dos `rate_limits`. */
 const DEMO_CODEX_ACCOUNT: DemoAccount = { id: '.codex', provider: 'codex', short: 'X', name: 'Codex', plan: 'Team', color: '#a77bf3', configDir: '~/.codex' };
@@ -261,10 +262,10 @@ export class DemoSimulator {
     this.prefix = opts.idPrefix ?? '';
     this.tag = now.toString(36);
     this.accounts = this.prefix
-      ? DEMO_ACCOUNTS.map((acc, i) => ({ ...acc, ...MERGED_ACCOUNTS[i], id: `${this.prefix}${acc.id}`, configDir: '(demonstração)' }))
+      ? DEMO_ACCOUNTS.map((acc, i) => ({ ...acc, ...MERGED_ACCOUNTS[i], id: `${this.prefix}${acc.id}`, configDir: '(演示)' }))
       : DEMO_ACCOUNTS;
     this.codexAccount = this.prefix
-      ? { ...DEMO_CODEX_ACCOUNT, ...MERGED_CODEX_ACCOUNT, id: `${this.prefix}${DEMO_CODEX_ACCOUNT.id}`, configDir: '(demonstração)' }
+      ? { ...DEMO_CODEX_ACCOUNT, ...MERGED_CODEX_ACCOUNT, id: `${this.prefix}${DEMO_CODEX_ACCOUNT.id}`, configDir: '(演示)' }
       : DEMO_CODEX_ACCOUNT;
     this.startedAt = now;
     this.accounts.forEach((acc, i) =>
@@ -433,11 +434,11 @@ export class DemoSimulator {
       return true;
     }
     if (answers) {
-      this.activity(a, now, { kind: 'other', icon: '💬', text: 'Respondido no Habblaud', detail: answerSummary(p.questions ?? [], answers), tool: 'PermissionRequest' });
+      this.activity(a, now, { kind: 'other', icon: '💬', ...productCopy('Respondido no Habblaud'), detail: answerSummary(p.questions ?? [], answers), tool: 'PermissionRequest' });
     } else if (d.behavior === 'allow') {
-      this.activity(a, now, { kind: 'other', icon: '✅', text: d.suggestion !== undefined ? 'Aprovado no Habblaud (sempre permitir)' : 'Aprovado no Habblaud', detail: title, tool: 'PermissionRequest' });
+      this.activity(a, now, { kind: 'other', icon: '✅', ...productCopy(d.suggestion !== undefined ? 'Aprovado no Habblaud (sempre permitir)' : 'Aprovado no Habblaud'), detail: title, tool: 'PermissionRequest' });
     } else {
-      this.activity(a, now, { kind: 'wait', icon: '🚫', text: 'Recusado no Habblaud', detail: d.message ? `${title} — ${d.message}` : title, tool: 'PermissionRequest' });
+      this.activity(a, now, { kind: 'wait', icon: '🚫', ...productCopy('Recusado no Habblaud'), detail: d.message ? `${title} — ${d.message}` : title, tool: 'PermissionRequest' });
     }
     this.resumeFromWaiting(a, now);
     return true;
@@ -472,14 +473,16 @@ export class DemoSimulator {
     a.info.permission = codex ? demoCodexPermission(id, a.project, a.rng, now) : demoPermission(id, a.project, a.rng, now, kind);
     const reason = codex ? 'aprovar um comando' : a.info.permission.tool === ASK_TOOL ? 'responder uma pergunta' : 'aprovar uma permissão';
     a.info.waitingFor = reason;
+    a.info.waitingForI18n = reason === 'aprovar um comando' ? productCopy('aprovar um comando').i18n : waitingReasonI18n(reason);
     this.setStatus(a, 'waiting', now);
     this.activity(a, now, SPECIAL.waiting(reason));
-    this.notice(now, 'alert', `✋ ${a.info.name} precisa de você em ${a.project.name}: ${reason}`, a.info.id, a.info.roomId);
+    this.notice(now, 'alert', productCopy(`✋ {agente} precisa de você em {sala}: ${reason}`, { agente: a.info.name, sala: a.project.name }), a.info.id, a.info.roomId);
   }
 
   private resumeFromWaiting(a: SimAgent, now: number): void {
     a.phase = 'working';
     a.info.waitingFor = undefined;
+    delete a.info.waitingForI18n;
     delete a.info.permission;
     this.setStatus(a, 'working', now);
     a.nextActionAt = now + this.ms(800, 1_500);
@@ -509,7 +512,7 @@ export class DemoSimulator {
     while (used.has(slot) || now - (this.slotFreedAt.get(slot) ?? -Infinity) < SLOT_COOLDOWN_MS) slot++;
     const room: RoomInfo = { id, name: project.name, path: `${ROOT}/${project.name}`, slot, seed: hash32(id), createdAt: now };
     this.rooms.set(id, room);
-    this.notice(now, 'info', `🏗️ Nova sala: ${project.name}`, undefined, id);
+    this.notice(now, 'info', productCopy('🏗️ Nova sala: {sala}', { sala: project.name }), undefined, id);
     this.dirty = true;
     return room;
   }
@@ -584,7 +587,7 @@ export class DemoSimulator {
     };
     this.agents.set(id, a);
     const acc = this.accounts.find((x) => x.id === info.account);
-    if (!warm) this.notice(now, 'info', `👋 ${info.name} chegou em ${project.name}${acc ? ` (${acc.name})` : ''}`, id, room.id);
+    if (!warm) this.notice(now, 'info', acc ? productCopy('👋 {agente} chegou em {sala} ({conta})', { agente: info.name, sala: project.name, conta: acc.name }) : productCopy('👋 {agente} chegou em {sala}', { agente: info.name, sala: project.name }), id, room.id);
     this.dirty = true;
   }
 
@@ -637,7 +640,7 @@ export class DemoSimulator {
     this.agents.set(id, sub);
     parent.children.push(id);
     parent.info.stats.subagents++;
-    this.activity(sub, now, { kind: 'prompt', icon: '📨', text: `Nova tarefa: “${desc}”`, detail: desc });
+    this.activity(sub, now, { kind: 'prompt', icon: '📨', ...productCopy('Nova tarefa: “{tarefa}”', { tarefa: desc }), detail: desc });
     this.dirty = true;
   }
 
@@ -657,7 +660,7 @@ export class DemoSimulator {
       this.setStatus(a, 'offline', now);
       delete a.info.canMessage;
       a.removeAt = now + OFFLINE_GRACE_MS;
-      this.notice(now, 'info', `🚪 ${a.info.name} encerrou a sessão`, a.info.id, a.info.roomId);
+      this.notice(now, 'info', productCopy('🚪 {agente} encerrou a sessão', { agente: a.info.name }), a.info.id, a.info.roomId);
       return;
     }
 
@@ -692,7 +695,7 @@ export class DemoSimulator {
         if (pending.length === 0) {
           a.phase = 'working';
           a.children = [];
-          this.activity(a, now, { kind: 'think', icon: '📥', text: 'Juntando os resultados da equipe' });
+          this.activity(a, now, { kind: 'think', icon: '📥', ...productCopy('Juntando os resultados da equipe') });
           a.nextActionAt = now + this.ms(2_000, 4_000);
         }
         break;
@@ -734,7 +737,7 @@ export class DemoSimulator {
           this.advanceTask(a, 'completed');
           this.activity(a, now, SPECIAL.turnDone(this.ms(40_000, 240_000) * this.speed));
           this.setStatus(a, 'idle', now);
-          this.notice(now, 'success', `✅ ${a.info.name} concluiu em ${a.project.name}`, a.info.id, a.info.roomId);
+          this.notice(now, 'success', productCopy('✅ {agente} concluiu em {sala}', { agente: a.info.name, sala: a.project.name }), a.info.id, a.info.roomId);
           break;
         }
         a.actionsLeft--;
@@ -744,7 +747,8 @@ export class DemoSimulator {
             this.askPermission(a, now);
           } else if (roll < 0.2 && a.children.length === 0) {
             const count = 2 + Math.floor(a.rng() * 3);
-            this.activity(a, now, describeTool('Agent', { description: `${count} frentes em paralelo`, subagent_type: 'general-purpose' }));
+            const delegated = describeTool('Agent', { description: `${count} frentes em paralelo`, subagent_type: 'general-purpose' });
+            this.activity(a, now, { ...delegated, ...productCopy('Delegando: {qtd} frentes em paralelo', { qtd: count }) });
             for (let i = 0; i < count; i++) this.spawnSub(a, now);
             a.phase = 'delegating';
           } else if (roll < 0.2 + FOREGROUND_CHANCE && !a.foregroundThisTurn && a.actionsLeft > 0) {
@@ -767,7 +771,7 @@ export class DemoSimulator {
       this.setStatus(a, 'done', now);
       a.removeAt = now + DONE_GRACE_MS;
       const parent = a.info.parentId ? this.agents.get(a.info.parentId) : undefined;
-      this.notice(now, 'success', `📦 ${a.info.name} entregou “${a.info.title}” para ${parent?.info.name ?? 'o agente'}`, a.info.id, a.info.roomId);
+      this.notice(now, 'success', parent ? productCopy('📦 {agente} entregou “{trabalho}” para {destino}', { agente: a.info.name, trabalho: a.info.title ?? '', destino: parent.info.name }) : productCopy('📦 {agente} entregou “{trabalho}” para o agente', { agente: a.info.name, trabalho: a.info.title ?? '' }), a.info.id, a.info.roomId);
       return;
     }
     if (now >= a.nextActionAt) {
@@ -797,6 +801,7 @@ export class DemoSimulator {
       const id = `b${Math.floor(this.rng() * 2 ** 40).toString(36)}`;
       // Um tool_use depois do outro: o primeiro é o mais antigo (é ele que dá o tempo da espera).
       const job: ShellJob = { id, label: d.label, startedAt: base - (count - 1 - i) * 1_200, background: true, kind: 'shell' };
+      if (d.labelI18n) job.labelI18n = d.labelI18n;
       if (d.command) job.command = d.command;
       jobs.push(job);
       a.shellEnds.set(id, { at: now + this.ms(40_000, 150_000), outcome: a.rng() < SHELL_FAIL_CHANCE ? 'failed' : 'ok' });
@@ -814,8 +819,11 @@ export class DemoSimulator {
     const main = jobs[0];
     a.phase = 'shell';
     this.setStatus(a, 'shell', now);
-    this.activity(a, now, SPECIAL.waitingShell(main?.label, jobs.length, main?.command));
-    if (notify && main) this.notice(now, 'info', `⏳ ${a.info.name} está esperando o shell em ${a.project.name}: ${main.label}`, a.info.id, a.info.roomId);
+    this.activity(a, now, SPECIAL.waitingShell(main?.label, jobs.length, main?.command, main?.labelI18n));
+    if (notify && main) {
+      const text = productCopy('⏳ {agente} está esperando o shell em {sala}: {rotulo}', { agente: a.info.name, sala: a.project.name, rotulo: main.label });
+      this.notice(now, 'info', main.labelI18n ? { text: text.text, i18n: productCopy('⏳ {agente} está esperando o shell em {sala}', { agente: a.info.name, sala: a.project.name }).i18n } : text, a.info.id, a.info.roomId);
+    }
   }
 
   /** Um shell em segundo plano terminou: atividade 'ShellDone' (o mundo comemora ou lamenta) e aviso. */
@@ -825,9 +833,14 @@ export class DemoSimulator {
     const job = a.info.shells?.find((j) => j.id === id);
     this.setShells(a, (a.info.shells ?? []).filter((j) => j.id !== id));
     if (!job || !end) return;
-    this.activity(a, now, SPECIAL.shellDone(job.label, end.outcome, now - job.startedAt, job.command));
-    if (end.outcome === 'ok') this.notice(now, 'success', `✅ ${a.info.name}: shell terminou em ${a.project.name} — ${job.label}`, a.info.id, a.info.roomId);
-    else this.notice(now, 'warn', `❌ ${a.info.name}: shell falhou em ${a.project.name} — ${job.label}`, a.info.id, a.info.roomId);
+    this.activity(a, now, SPECIAL.shellDone(job.label, end.outcome, now - job.startedAt, job.command, job.labelI18n));
+    if (end.outcome === 'ok') {
+      const text = productCopy('✅ {agente}: shell terminou em {sala} — {rotulo}', { agente: a.info.name, sala: a.project.name, rotulo: job.label });
+      this.notice(now, 'success', job.labelI18n ? { text: text.text, i18n: productCopy('✅ {agente}: shell terminou em {sala}', { agente: a.info.name, sala: a.project.name }).i18n } : text, a.info.id, a.info.roomId);
+    } else {
+      const text = productCopy('❌ {agente}: shell falhou em {sala} — {rotulo}', { agente: a.info.name, sala: a.project.name, rotulo: job.label });
+      this.notice(now, 'warn', job.labelI18n ? { text: text.text, i18n: productCopy('❌ {agente}: shell falhou em {sala}', { agente: a.info.name, sala: a.project.name }).i18n } : text, a.info.id, a.info.roomId);
+    }
   }
 
   /**
@@ -845,7 +858,7 @@ export class DemoSimulator {
     if (ev.kind === 'pr_opened') this.prSeq++;
     const d = describeGitHubEvent(ev, a.info.name, a.project.name);
     this.activity(a, now, d.activity);
-    this.notice(now, d.level, d.notice, a.info.id, a.info.roomId);
+    this.notice(now, d.level, { text: d.notice, i18n: d.noticeI18n }, a.info.id, a.info.roomId);
     if (this.effects.apply(a.info.roomId, ev, now, a.info.id)) this.dirty = true;
   }
 
@@ -854,6 +867,7 @@ export class DemoSimulator {
     const spec = this.pick(FOREGROUND_JOBS, a.rng);
     const d = describeShellJob('Bash', spec);
     const job: ShellJob = { id: `toolu_demo_${this.tag}_${++this.seq}`, label: d.label, startedAt: now, background: false, kind: 'shell' };
+    if (d.labelI18n) job.labelI18n = d.labelI18n;
     if (d.command) job.command = d.command;
     this.setShells(a, [...(a.info.shells ?? []), job]);
     a.foregroundThisTurn = true;
@@ -951,8 +965,9 @@ export class DemoSimulator {
     this.dirty = true;
   }
 
-  private notice(now: number, level: Notice['level'], text: string, agentId?: string, roomId?: string): void {
-    const n: Notice = { id: `${this.prefix}${this.tag}-n${++this.seq}`, level, text, at: now };
+  private notice(now: number, level: Notice['level'], copy: string | ProductCopy, agentId?: string, roomId?: string): void {
+    const n: Notice = { id: `${this.prefix}${this.tag}-n${++this.seq}`, level, text: typeof copy === 'string' ? copy : copy.text, at: now };
+    if (typeof copy !== 'string') n.i18n = copy.i18n;
     if (agentId) n.agentId = agentId;
     if (roomId) n.roomId = roomId;
     this.pendingNotices.push(n);

@@ -48,6 +48,7 @@ export interface TerminalOptions {
    * = createParser.
    */
   parserFor?: (agentId: string) => TerminalParser | undefined;
+  conversationOf?: (agentId: string) => ConversationSource | undefined;
   /** Fábrica do parser padrão (testes); padrão: createTerminalParser (o do Claude Code). */
   createParser?: () => TerminalParser;
   /** Conversa fictícia dos agentes do demo (testes); padrão: demoTerminalEntries. */
@@ -62,14 +63,14 @@ export interface TerminalOptions {
 }
 
 /** O que mudou desde o último ciclo: `init` substitui tudo; `stop` = não há mais o que acompanhar. */
-interface PollResult {
+export interface PollResult {
   init?: TerminalInit;
   append?: TerminalEntry[];
   stop?: boolean;
 }
 
 /** De onde vem a conversa de uma conexão. */
-interface ConversationSource {
+export interface ConversationSource {
   readonly intervalMs: number;
   /** Conversa recente, para o `init`. */
   load(): TerminalInit;
@@ -239,9 +240,9 @@ export class TerminalStreams {
    * `streamId` vai no `init` (ex.: "session:<conta>:<sessionId>"); `createParser` é o da ferramenta da sessão
    * (HistorySession.createParser; padrão: o do Claude Code). Mesmos erros de attach (429/500).
    */
-  attachSession(req: IncomingMessage, res: ServerResponse, streamId: string, path: string, createParser?: () => TerminalParser): void {
+  attachSession(req: IncomingMessage, res: ServerResponse, streamId: string, path: string, createParser?: () => TerminalParser, conversation?: ConversationSource): void {
     const o = { transcriptPathOf: () => undefined, createParser: createParser ?? this.createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries };
-    this.serve(req, res, streamId, new TranscriptSource(streamId, path, o, this.sessionPollMs));
+    this.serve(req, res, streamId, conversation ?? new TranscriptSource(streamId, path, o, this.sessionPollMs));
   }
 
   /** Limite de terminais, `init` e o stream SSE de uma fonte já escolhida. */
@@ -286,6 +287,8 @@ export class TerminalStreams {
   private sourceFor(agentId: string): ConversationSource | string {
     const office = this.opts.office;
     if (office.has(agentId)) {
+      const conversation = this.opts.conversationOf?.(agentId);
+      if (conversation) return conversation;
       const path = this.opts.transcriptPathOf(agentId);
       if (!path) return 'transcript do agente não encontrado';
       const parserFor = this.opts.parserFor;

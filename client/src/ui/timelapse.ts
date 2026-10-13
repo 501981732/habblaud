@@ -10,6 +10,7 @@ import { BUCKET_MS, fetchTimelineDay, fetchTimelineDays, TimelineReplay, type Ti
 import type { WorldPlayback } from '../world/api';
 import { animScale } from '../world/playback';
 import type { UiComponent, UiContext } from './context';
+import { getLocale, t } from '../../../shared/i18n';
 import { h, iconButton, setAttr, setHidden, setStyleVar, setText, setTitle } from './dom';
 import { formatClock } from './format';
 import { pixelIcon } from './icons';
@@ -42,14 +43,14 @@ export const TIMELAPSE_ICONS = {
   peak: pixelIcon(['#####', '.###.', '..#..']),
 };
 
-const dayFmt = new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' });
+const dayFmt = () => new Intl.DateTimeFormat(getLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
 const hhmm = (at: number) => formatClock(at, false);
 
 /** "Hoje", "Ontem" ou "ter., 6 de out.". */
 export function dayLabel(day: string, today: string): string {
-  if (day === today) return 'Hoje';
-  if (day === shiftDay(today, -1)) return 'Ontem';
-  return dayFmt.format(dayStart(day));
+  if (day === today) return t('Hoje');
+  if (day === shiftDay(today, -1)) return t('Ontem');
+  return dayFmt().format(dayStart(day));
 }
 
 /** Horas cheias para as marcas da régua: no máximo ~6, de 1, 2, 3, 4 ou 6 em 6 horas. */

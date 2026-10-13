@@ -541,11 +541,11 @@ export class DayPanel implements UiComponent {
       );
       const li = h(
         'li',
-        { class: 'ui-day__bar', tabIndex: 0, attrs: { 'aria-label': r.label, 'data-focus-key': `room:${r.id}` } },
+        { class: 'ui-day__bar', tabIndex: 0, rawAttrs: ['aria-label'], attrs: { 'aria-label': r.label, 'data-focus-key': `room:${r.id}` } },
         h(
           'span',
           { class: 'ui-day__bar-head' },
-          h('span', { class: 'ui-day__bar-name', text: r.name, title: r.id }),
+          h('span', { class: 'ui-day__bar-name', text: r.name, rawText: true, title: r.id, rawTitle: true }),
           h('span', { class: 'ui-day__bar-value' }, this.visible.has('waiting') ? h('strong', { text: r.waiting }) : null, h('span', { class: 'ui-day__muted', text: r.totalText })),
         ),
         track,
@@ -573,13 +573,13 @@ export class DayPanel implements UiComponent {
     const list = h('ol', { class: 'ui-day__waits' });
     for (const w of rows) {
       const acc = accounts.get(w.account);
-      const chip = h('span', { class: 'ui-acc-chip', text: acc?.short ?? '?', title: acc?.name ?? w.account });
+      const chip = h('span', { class: 'ui-acc-chip', text: acc?.short ?? '?', rawText: true, title: acc?.name ?? w.account, rawTitle: true });
       setStyleVar(chip, '--acc', acc?.color ?? '#8b98b3');
       if (this.isCodexAccount(w.account)) chip.dataset.provider = 'codex';
       list.append(
         h(
           'li',
-          { class: `ui-day__wait${w.ongoing ? ' is-ongoing' : ''}`, attrs: { 'aria-label': w.label } },
+          { class: `ui-day__wait${w.ongoing ? ' is-ongoing' : ''}`, rawAttrs: ['aria-label'], attrs: { 'aria-label': w.label } },
           h('span', { class: 'ui-day__rank', text: `${w.rank}`, attrs: { 'aria-hidden': 'true' } }),
           h(
             'span',
@@ -595,8 +595,8 @@ export class DayPanel implements UiComponent {
               'span',
               { class: 'ui-day__wait-who' },
               chip,
-              h('span', { class: 'ui-day__wait-name', text: w.agentName }),
-              h('span', { class: 'ui-day__muted', text: `em ${w.roomName} · ${w.when}${w.reason ? ` · ${w.reason}` : ''}` }),
+              h('span', { class: 'ui-day__wait-name', text: w.agentName, rawText: true }),
+              h('span', { class: 'ui-day__muted', text: `em ${w.roomName} · ${w.when}${w.reason ? ` · ${w.reason}` : ''}`, rawText: true }),
             ),
           ),
         ),
@@ -617,18 +617,18 @@ export class DayPanel implements UiComponent {
     }
     const grid = h('div', { class: 'ui-day__accounts' });
     for (const a of cards) {
-      const chip = h('span', { class: 'ui-acc-chip ui-acc-chip--md', text: a.short, attrs: { 'aria-hidden': 'true', ...(a.codex ? { 'data-provider': 'codex' } : {}) } });
+      const chip = h('span', { class: 'ui-acc-chip ui-acc-chip--md', text: a.short, rawText: true, attrs: { 'aria-hidden': 'true', ...(a.codex ? { 'data-provider': 'codex' } : {}) } });
       setStyleVar(chip, '--acc', a.color);
       const meter = h(
         'span',
-        { class: 'ui-day__meter', role: 'img', attrs: { 'aria-label': a.shareText } },
+        { class: 'ui-day__meter', role: 'img', rawAttrs: ['aria-label'], attrs: { 'aria-label': a.shareText } },
         h('span', { class: 'ui-day__meter-fill', style: `width:${a.share}%` }),
       );
       const stat = (label: string, value: string) => [h('dt', { text: label }), h('dd', { text: value })];
       const card = h(
         'article',
-        { class: 'ui-day__account', attrs: { 'aria-label': a.name } },
-        h('div', { class: 'ui-day__account-head' }, chip, h('strong', { class: 'ui-day__account-name', text: a.name }), h('span', { class: 'ui-day__muted', text: a.sessions })),
+        { class: 'ui-day__account', rawAttrs: ['aria-label'], attrs: { 'aria-label': a.name } },
+        h('div', { class: 'ui-day__account-head' }, chip, h('strong', { class: 'ui-day__account-name', text: a.name, rawText: true }), h('span', { class: 'ui-day__muted', text: a.sessions })),
         meter,
         h('p', { class: 'ui-day__kpi-sub', text: a.shareText }),
         h(

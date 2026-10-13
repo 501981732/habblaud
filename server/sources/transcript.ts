@@ -517,6 +517,7 @@ class LineParser {
         const shell: ShellStart = {
           toolUseId: id,
           label: job.label,
+          ...(job.labelI18n ? { labelI18n: job.labelI18n } : {}),
           background: name === 'Monitor' || truthy(input.run_in_background),
           kind: job.kind,
           at: this.at,

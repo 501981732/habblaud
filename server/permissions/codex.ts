@@ -9,13 +9,16 @@
 //   (mascarado) fica no detalhe, que só sai por GET /api/permissions/:id.
 // Tudo mascarado (maskSecrets) e cortado como no terminal.
 import { basename, describeTool, maskSecrets, truncate } from '../../shared/activity';
-import type { TerminalInputKind } from '../../shared/types';
+import { productCopy } from '../../shared/copy';
+import type { MessageRef, TerminalInputKind } from '../../shared/types';
 import { TITLE_ARG_MAX, toolView } from '../sources/terminal';
 
 /** Resumo de um pedido do Codex: o que vai em PermissionRequestInfo (title, text, icon, input, inputKind). */
 export interface CodexToolView {
   title: string;
+  titleI18n?: MessageRef;
   text: string;
+  i18n?: MessageRef;
   icon: string;
   input?: string;
   inputKind?: TerminalInputKind;
@@ -67,10 +70,10 @@ export function codexToolView(tool: string, input: Rec, cwd?: string): CodexTool
     case 'Bash': {
       const command = str(input.command);
       const target = NETWORK.exec(str(input.description)?.trim() ?? '')?.[1];
-      if (target) return { title: `Rede(${line(target, TITLE_ARG_MAX)})`, text: line(`Acessar a rede: ${target}`, TEXT_MAX), icon: '🌐', ...shown(command, 'command') };
+      if (target) return { title: `Rede(${line(target, TITLE_ARG_MAX)})`, titleI18n: productCopy('Rede({alvo})', { alvo: line(target, TITLE_ARG_MAX) }).i18n, text: line(`Acessar a rede: ${target}`, TEXT_MAX), i18n: productCopy('Acessar a rede: {alvo}', { alvo: line(target, TEXT_MAX - 18) }).i18n, icon: '🌐', ...shown(command, 'command') };
       const view = toolView('Bash', { command: command ?? '' }, cwd);
       const desc = describeTool('Bash', { command: command ?? '', description: str(input.description) });
-      return { title: view.title, text: desc.text, icon: desc.icon, ...shown(command, 'command') };
+      return { title: view.title, text: desc.text, ...(desc.i18n ? { i18n: desc.i18n } : {}), icon: desc.icon, ...shown(command, 'command') };
     }
     case 'apply_patch': {
       const patch = str(input.command) ?? str(input.patch) ?? str(input.input);
@@ -87,21 +90,22 @@ export function codexToolView(tool: string, input: Rec, cwd?: string): CodexTool
             : first?.op === 'Delete'
               ? [`Apagando ${name}`, '🗑️']
               : [first ? `Editando ${name}` : 'Aplicando um patch', '✏️'];
-      return { title, text: truncate(text, TEXT_MAX), icon, ...shown(patch, 'diff') };
+      const i18n = files.length > 1 ? productCopy('Editando {count} arquivos', { count: files.length }).i18n : first?.op === 'Add' ? productCopy('Criando {arquivo}', { arquivo: name }).i18n : first?.op === 'Delete' ? productCopy('Apagando {arquivo}', { arquivo: name }).i18n : first ? productCopy('Editando {arquivo}', { arquivo: name }).i18n : productCopy('Aplicando um patch').i18n;
+      return { title, text: truncate(text, TEXT_MAX), i18n, icon, ...shown(patch, 'diff') };
     }
     case 'request_permissions': {
       const view = toolView(tool, input, cwd);
-      return { ...view, text: 'Pedindo mais permissões', icon: '🔐' };
+      return { ...view, text: 'Pedindo mais permissões', i18n: productCopy('Pedindo mais permissões').i18n, icon: '🔐' };
     }
     case 'write_stdin': {
       const chars = typeof input.chars === 'string' ? input.chars : '';
       const title = chars ? `write_stdin(${chars.length} caractere${chars.length === 1 ? '' : 's'})` : 'write_stdin';
-      return { title, text: 'Digitando num processo do terminal', icon: '⌨️', ...shown(chars ? escaped(chars) : undefined, 'text') };
+      return { title, ...(chars ? { titleI18n: productCopy('write_stdin({count} caracteres)', { count: chars.length }).i18n } : {}), text: 'Digitando num processo do terminal', i18n: productCopy('Digitando num processo do terminal').i18n, icon: '⌨️', ...shown(chars ? escaped(chars) : undefined, 'text') };
     }
     default: {
       const view = toolView(tool, input, cwd);
       const desc = describeTool(tool, input);
-      return { ...view, text: desc.text, icon: desc.icon };
+      return { ...view, text: desc.text, ...(desc.i18n ? { i18n: desc.i18n } : {}), icon: desc.icon };
     }
   }
 }

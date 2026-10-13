@@ -12,8 +12,9 @@
 // - comandos de barra locais e a saída deles vêm em linhas system `local_command`;
 // - erros da API: uma linha system `api_error` por tentativa e, quando o Claude Code desiste, uma
 //   mensagem sintética do assistant com `isApiErrorMessage`.
-import type { TerminalEntry, TerminalInputKind } from '../../shared/types';
+import type { MessageRef, TerminalEntry, TerminalInputKind } from '../../shared/types';
 import { formatDuration, maskSecrets, truncate } from '../../shared/activity';
+import { productCopy, type ProductCopy } from '../../shared/copy';
 import { forkDirective, parseTaskNotification } from './transcript';
 
 export interface TerminalParser {
@@ -170,6 +171,7 @@ function inner(text: string, tag: string): string | undefined {
 
 interface ToolView {
   title: string;
+  titleI18n?: MessageRef;
   input?: string;
   inputKind?: TerminalInputKind;
 }
@@ -322,7 +324,7 @@ export function toolView(name: string, input: Rec, cwd?: string): ToolView {
     }
     case 'TodoWrite': {
       const t = todoList(input.todos);
-      return { title: t.total ? `TodoWrite(${t.done}/${t.total} concluídas)` : 'TodoWrite', ...textInput(t.list) };
+      return { title: t.total ? `TodoWrite(${t.done}/${t.total} concluídas)` : 'TodoWrite', ...(t.total ? { titleI18n: productCopy('TodoWrite({done}/{total} concluídas)', { done: t.done, total: t.total }).i18n } : {}), ...textInput(t.list) };
     }
     case 'TaskCreate':
       return { title: titled('TaskCreate', s('subject')), ...textInput(s('description')) };
@@ -330,7 +332,9 @@ export function toolView(name: string, input: Rec, cwd?: string): ToolView {
       const id = s('taskId') ?? (typeof input.taskId === 'number' ? String(input.taskId) : undefined);
       const st = s('status');
       const arg = id ? `#${id}${st ? ` → ${TASK_STATUS[st] ?? st}` : ''}` : st;
-      return { title: titled('TaskUpdate', arg), ...jsonInput(input, ['taskId', 'status'], cwd) };
+      const status = st ? TASK_STATUS[st] : undefined;
+      const titleI18n = status ? productCopy(id ? `TaskUpdate(#{id} → ${status})` : `TaskUpdate(${status})`, { id: id ? maskSecrets(id) : '' }).i18n : undefined;
+      return { title: titled('TaskUpdate', arg), ...(titleI18n ? { titleI18n } : {}), ...jsonInput(input, ['taskId', 'status'], cwd) };
     }
     case 'Skill':
       return { title: titled('Skill', s('skill') ?? s('command')), ...textInput(s('args')) };
@@ -460,12 +464,18 @@ class Parser implements TerminalParser {
   }
 
   /** `text` deve vir numa linha só (oneLine) ou ser fixo; a máscara aqui é a última garantia. */
-  private sys(c: Ctx, text: string, o: { level?: Level; detail?: string; suffix?: string } = {}): void {
-    if (!text) return;
-    const e: SystemEntry = { kind: 'system', id: `${c.uuid}${o.suffix ?? ':s'}`, at: c.at, text: maskSecrets(text), level: o.level ?? 'info' };
+  private sys(c: Ctx, text: string | ProductCopy, o: { level?: Level; detail?: string; detailI18n?: MessageRef; suffix?: string } = {}): void {
+    const shown = typeof text === 'string' ? text : text.text;
+    if (!shown) return;
+    const e: SystemEntry = { kind: 'system', id: `${c.uuid}${o.suffix ?? ':s'}`, at: c.at, text: maskSecrets(shown), level: o.level ?? 'info' };
+    if (typeof text !== 'string') {
+      const params = text.i18n.params;
+      e.i18n = params ? { key: text.i18n.key, params: Object.fromEntries(Object.entries(params).map(([key, value]) => [key, typeof value === 'string' ? maskSecrets(value) : value])) } : text.i18n;
+    }
     if (o.detail?.trim()) {
       const detail = marked(prepare(o.detail, DETAIL_MAX));
       if (detail) e.detail = detail;
+      if (detail && o.detailI18n) e.detailI18n = o.detailI18n;
     }
     this.emit(e);
   }
@@ -474,7 +484,7 @@ class Parser implements TerminalParser {
   private sysContent(c: Ctx, content: string, level: Level, label?: string, suffix?: string): void {
     if (!content.trim()) return;
     const { line, detail } = lineAndDetail(content, label ? 160 : SYSTEM_TEXT_MAX);
-    this.sys(c, label ? `${label}: ${line}` : line, { level, detail, suffix });
+    this.sys(c, label === 'Recapitulação' ? productCopy('Recapitulação: {linha}', { linha: line }) : label ? `${label}: ${line}` : line, { level, detail, suffix });
   }
 
   // ---------------------------------------------------------------- user
@@ -485,7 +495,7 @@ class Parser implements TerminalParser {
     const content = rec(j.message)?.content;
     if (j.isCompactSummary === true) {
       const text = typeof content === 'string' ? content : resultText(content);
-      this.sys(c, 'Resumo da conversa compactada', { detail: text });
+      this.sys(c, productCopy('Resumo da conversa compactada'), { detail: text });
       return;
     }
     if (typeof content === 'string') return this.userText(c, content);
@@ -523,7 +533,7 @@ class Parser implements TerminalParser {
       return;
     }
     if (text.startsWith('<task-notification>')) return this.notification(c, text);
-    if (INTERRUPTED.test(text)) return this.sys(c, 'Interrompido pelo usuário', { level: 'warn' });
+    if (INTERRUPTED.test(text)) return this.sys(c, productCopy('Interrompido pelo usuário'), { level: 'warn' });
     if (text.startsWith('Caveat:')) return;
     const tag = /^<([a-z][\w-]*)/.exec(text)?.[1];
     switch (tag) {
@@ -545,7 +555,7 @@ class Parser implements TerminalParser {
         const out = OUTPUT_TAGS.map((t) => inner(text, t)?.trim())
           .filter(Boolean)
           .join('\n');
-        if (out) this.sys(c, this.lastCommand ? `Saída de ${this.lastCommand}` : 'Saída do comando', { detail: out });
+        if (out) this.sys(c, this.lastCommand ? productCopy('Saída de {comando}', { comando: this.lastCommand }) : productCopy('Saída do comando'), { detail: out });
         return;
       }
       case 'bash-input': {
@@ -560,7 +570,7 @@ class Parser implements TerminalParser {
           .map((x) => x?.trim())
           .filter(Boolean)
           .join('\n');
-        this.sys(c, 'Saída do comando', { detail: out || '(sem saída)' });
+        this.sys(c, productCopy('Saída do comando'), { detail: out || '(sem saída)', ...(!out ? { detailI18n: productCopy('(sem saída)').i18n } : {}) });
         return;
       }
       case 'scheduled-task': {
@@ -605,7 +615,7 @@ class Parser implements TerminalParser {
     } else if (event) label = 'Evento de tarefa em segundo plano';
     const summary = n.summary ? oneLine(n.summary, 160) : '';
     const detail = [summary.endsWith('…') ? n.summary : undefined, event, result].filter(Boolean).join('\n\n');
-    this.sys(c, summary ? `${label}: ${summary}` : label, { level, detail });
+    this.sys(c, summary ? productCopy(`${label}: {resumo}`, { resumo: summary }) : productCopy(label), { level, detail });
   }
 
   private toolResult(c: Ctx, b: Rec): void {
@@ -613,14 +623,20 @@ class Parser implements TerminalParser {
     if (!id) return;
     const error = b.is_error === true;
     let raw = resultText(b.content);
+    let resultI18n: MessageRef | undefined;
     const wrapped = /^\s*<tool_use_error>/.test(raw) ? inner(raw, 'tool_use_error') : undefined;
     if (wrapped !== undefined) raw = wrapped;
     if (error && REJECTED.test(raw.slice(0, 300))) {
       const feedback = /the user said:\s*([\s\S]*)$/i.exec(raw)?.[1]?.trim();
-      raw = feedback ? `Recusado pelo usuário: ${feedback}` : 'Recusado pelo usuário';
+      const copy = feedback ? productCopy('Recusado pelo usuário: {motivo}', { motivo: maskSecrets(feedback) }) : productCopy('Recusado pelo usuário');
+      raw = copy.text;
+      resultI18n = copy.i18n;
     }
     const p = prepare(raw, RESULT_MAX, RESULT_MAX_LINES);
     const e: ResultEntry = { kind: 'result', id: `${id}:r`, at: c.at, toolUseId: id, text: p.text || '(sem saída)' };
+    if (!p.text) e.resultI18n = productCopy('(sem saída)').i18n;
+    else if (resultI18n && !p.truncated && p.text === maskSecrets(raw)) e.resultI18n = resultI18n;
+    else if (p.text === '[imagem]' || p.text === '[documento]') e.resultI18n = productCopy(p.text).i18n;
     if (error) e.error = true;
     if (p.truncated) e.truncated = true;
     this.emit(e);
@@ -656,7 +672,7 @@ class Parser implements TerminalParser {
     const synthetic = m.model === '<synthetic>';
     if (c.j.isApiErrorMessage === true || (synthetic && str(c.j.error))) {
       const text = blocks.map((b) => rec(b)?.text).filter((t): t is string => typeof t === 'string').join('\n');
-      return this.sysContent(c, text || 'Erro da API', 'error');
+      return text ? this.sysContent(c, text, 'error') : this.sys(c, productCopy('Erro da API'), { level: 'error' });
     }
     const msgId = str(m.id) ?? c.uuid;
     blocks.forEach((raw, i) => {
@@ -693,6 +709,7 @@ class Parser implements TerminalParser {
           const name = str(b.name) ?? 'ferramenta';
           const view = toolView(name, rec(b.input) ?? {}, c.cwd);
           const e: ToolEntry = { kind: 'tool', id: str(b.id) ?? id, at: c.at, tool: name, title: maskSecrets(view.title) };
+          if (view.titleI18n) e.titleI18n = view.titleI18n;
           if (view.input) {
             e.input = view.input;
             e.inputKind = view.inputKind;
@@ -714,7 +731,7 @@ class Parser implements TerminalParser {
     switch (j.subtype) {
       case 'compact_boundary': {
         const trigger = rec(j.compactMetadata)?.trigger;
-        return this.sys(c, trigger === 'manual' ? 'Conversa compactada (/compact)' : trigger === 'auto' ? 'Conversa compactada automaticamente' : 'Conversa compactada');
+        return this.sys(c, productCopy(trigger === 'manual' ? 'Conversa compactada (/compact)' : trigger === 'auto' ? 'Conversa compactada automaticamente' : 'Conversa compactada'));
       }
       case 'api_error': {
         // Uma linha por tentativa: só a primeira de cada sequência vira entrada.
@@ -723,13 +740,12 @@ class Parser implements TerminalParser {
         const err = rec(j.error);
         const why = str(err?.formatted) ?? str(err?.message) ?? str(j.error);
         const max = typeof j.maxRetries === 'number' ? j.maxRetries : undefined;
-        const retry = attempt !== undefined ? ` — tentando de novo${max ? ` (até ${max} vezes)` : ''}` : '';
-        return this.sys(c, `Erro da API${why ? `: ${oneLine(why, 140)}` : ''}${retry}`, { level: 'error' });
+        return this.sys(c, productCopy(why ? attempt !== undefined ? max ? 'Erro da API: {erro} — tentando de novo (até {max} vezes)' : 'Erro da API: {erro} — tentando de novo' : 'Erro da API: {erro}' : attempt !== undefined ? max ? 'Erro da API — tentando de novo (até {max} vezes)' : 'Erro da API — tentando de novo' : 'Erro da API', { erro: why ? oneLine(why, 140) : '', max: max ?? 0 }), { level: 'error' });
       }
       case 'local_command':
         return this.userText(c, content);
       case 'turn_duration':
-        if (typeof j.durationMs === 'number' && j.durationMs >= 0) this.sys(c, `Turno concluído em ${formatDuration(j.durationMs)}`);
+        if (typeof j.durationMs === 'number' && j.durationMs >= 0) this.sys(c, productCopy('Turno concluído em {duracao}', { duracao: formatDuration(j.durationMs) }));
         return;
       case 'informational':
         return this.sysContent(c, content, j.level === 'warning' ? 'warn' : j.level === 'error' ? 'error' : 'info');

@@ -4,6 +4,12 @@ type Child = Node | string | null | undefined | false;
 type Props = {
   class?: string;
   text?: string;
+  /** Render the value verbatim (transcripts, paths, user input, commands, model/tool output). */
+  rawText?: boolean;
+  /** Preserve dynamic names, paths, and other non-product titles verbatim. */
+  rawTitle?: boolean;
+  /** Attribute names that must remain verbatim, including user supplied or computed values. */
+  rawAttrs?: string[];
   title?: string;
   style?: string;
   role?: string;
@@ -15,20 +21,49 @@ type Props = {
   attrs?: Record<string, string | number | boolean | undefined>;
 };
 
+import { t } from '../../../shared/i18n';
+
+const TEXT_SOURCE = '__habblaudI18nSource';
+type LocalizableNode = Text & { [TEXT_SOURCE]?: string };
+
 /** Cria um elemento com propriedades e filhos. */
 export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
   if (props.class) el.className = props.class;
-  if (props.text !== undefined) el.textContent = props.text;
-  if (props.title) el.title = props.title;
+  if (props.text !== undefined) {
+    if (props.rawText) el.textContent = props.text;
+    else {
+      el.dataset.i18nText = props.text;
+      el.textContent = t(props.text);
+    }
+  }
+  if (props.title) {
+    if (props.rawTitle) el.title = props.title;
+    else {
+      el.dataset.i18nTitle = props.title;
+      el.title = t(props.title);
+    }
+  }
   if (props.style) el.setAttribute('style', props.style);
   if (props.role) el.setAttribute('role', props.role);
   if (props.tabIndex !== undefined) el.tabIndex = props.tabIndex;
   if (props.hidden) el.hidden = true;
   if (props.type) el.setAttribute('type', props.type);
-  if (props.attrs) for (const [k, v] of Object.entries(props.attrs)) if (v !== undefined && v !== false) el.setAttribute(k, v === true ? '' : String(v));
+  if (props.attrs) for (const [k, v] of Object.entries(props.attrs)) if (v !== undefined && v !== false) {
+    const value = v === true ? '' : String(v);
+    if (typeof v === 'string' && !props.rawAttrs?.includes(k) && ['aria-label', 'aria-description', 'placeholder', 'alt'].includes(k)) {
+      el.dataset[`i18n${k.replace(/(^|-)(.)/g, (_, _dash, c) => c.toUpperCase())}`] = v;
+      el.setAttribute(k, t(v));
+    } else el.setAttribute(k, value);
+  }
   if (props.on) for (const [k, fn] of Object.entries(props.on)) el.addEventListener(k, fn as EventListener);
-  for (const c of children) if (c !== null && c !== undefined && c !== false) el.append(c);
+  for (const c of children) if (c !== null && c !== undefined && c !== false) {
+    if (typeof c === 'string') {
+      const node = document.createTextNode(props.rawText ? c : t(c)) as LocalizableNode;
+      if (!props.rawText) node[TEXT_SOURCE] = c;
+      el.append(node);
+    } else el.append(c);
+  }
   return el;
 }
 
@@ -39,9 +74,58 @@ export function iconButton(icon: string, label: string, onClick: (ev: MouseEvent
   return b;
 }
 
-/** Atualiza o texto só quando muda (evita relayout desnecessário). */
+/** Atualiza texto de produto e acompanha a origem para trocar o idioma sem reconstruir a tela. */
 export function setText(el: Element, text: string): void {
+  setProductText(el, text);
+}
+
+/** Update generated product copy. */
+export function setProductText(el: Element, source: string): void {
+  if (el instanceof HTMLElement) el.dataset.i18nText = source;
+  const value = t(source);
+  if (el.textContent !== value) el.textContent = value;
+}
+
+/** Update data from sessions, users, commands and tool output without running it through the product dictionary. */
+export function setRawText(el: Element, text: string): void {
+  if (el instanceof HTMLElement) delete el.dataset.i18nText;
   if (el.textContent !== text) el.textContent = text;
+}
+
+/** Re-render tracked product copy after a language change. Raw text is never registered here. */
+export function refreshLocalizableDom(root: ParentNode): void {
+  const elements = root.querySelectorAll<HTMLElement>('[data-i18n-text], [data-i18n-title], [data-i18n-aria-label], [data-i18n-aria-description], [data-i18n-placeholder], [data-i18n-alt]');
+  for (const el of elements) {
+    if (el.dataset.i18nText !== undefined) el.textContent = t(el.dataset.i18nText);
+    if (el.dataset.i18nTitle !== undefined) el.title = t(el.dataset.i18nTitle);
+    for (const [dataKey, attr] of [['i18nAriaLabel', 'aria-label'], ['i18nAriaDescription', 'aria-description'], ['i18nPlaceholder', 'placeholder'], ['i18nAlt', 'alt']]) {
+      const source = el.dataset[dataKey];
+      if (source !== undefined) el.setAttribute(attr, t(source));
+    }
+  }
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode() as LocalizableNode | null; node; node = walker.nextNode() as LocalizableNode | null) {
+    if (node[TEXT_SOURCE] !== undefined) node.textContent = t(node[TEXT_SOURCE]);
+  }
+  for (const el of root.querySelectorAll<HTMLElement>('[data-i18n-rich]')) renderRichText(el, el.dataset.i18nRich!);
+}
+
+/** Product help with inline commands, retaining its source for language switching. */
+export function richProductText(source: string): HTMLElement {
+  const el = document.createElement('span');
+  el.dataset.i18nRich = source;
+  renderRichText(el, source);
+  return el;
+}
+
+function renderRichText(el: HTMLElement, source: string): void {
+  el.replaceChildren(...t(source).split('`').map((part, i) => {
+    if (i % 2 === 0) return document.createTextNode(part);
+    const code = document.createElement('code');
+    code.className = 'ui-usage-setup__inline';
+    code.textContent = part;
+    return code;
+  }));
 }
 
 export function setAttr(el: Element, name: string, value: string | null | undefined): void {
@@ -53,6 +137,14 @@ export function setAttr(el: Element, name: string, value: string | null | undefi
 }
 
 export function setTitle(el: HTMLElement, title: string): void {
+  el.dataset.i18nTitle = title;
+  const value = t(title);
+  if (el.title !== value) el.title = value;
+}
+
+/** Update a dynamic title verbatim (names, paths, transcript or tool output). */
+export function setRawTitle(el: HTMLElement, title: string): void {
+  delete el.dataset.i18nTitle;
   if (el.title !== title) el.title = title;
 }
 
