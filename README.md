@@ -2,6 +2,20 @@
 
 <h1 align="center">Habblaud</h1>
 
+<p align="center">
+  <a href="README.md">简体中文</a> ·
+  <a href="README.en.md">English</a> ·
+  <a href="README.pt-BR.md">Português (Brasil)（上游参考）</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/501981732/habblaud">项目仓库</a> ·
+  <a href="https://github.com/marmottajr/habblaud">上游项目</a> ·
+  <a href="docs/zh-CN/接入与故障排查.md">接入指南</a> ·
+  <a href="docs/zh-CN/验证记录.md">验证记录</a> ·
+  <a href="LICENSE">MIT 许可证</a>
+</p>
+
 <p align="center"><b>把 Claude Code、Codex、DeepSeek Harness 和 Pi 的本机 Agent 放进同一座像素办公室。</b><br />一个项目一间房，一个会话一个角色，实时看到谁在工作、等待你回应，或已经完成。</p>
 
 <p align="center">
@@ -16,7 +30,7 @@
 
 以上使用演示数据，来自实际运行的中文界面。[中文设置](docs/screenshots/zh-CN/settings.jpg)、[使用说明](docs/screenshots/zh-CN/help.jpg)和[移动界面](docs/screenshots/zh-CN/mobile-settings.jpg)也已更新；本机联调范围和结果见[验证记录](docs/zh-CN/验证记录.md)。
 
-首次打开默认使用**简体中文**；在「设置 → 语言」可切换为 Português (Brasil)，选择会保存在浏览器中。项目名、模型名、你发给 Agent 的原始消息、命令与工具结果不会被翻译。葡语上游说明见 [README.pt-BR.md](README.pt-BR.md)。
+首次打开默认使用**简体中文**；在「设置 → 语言」可切换为 Português (Brasil)，选择会保存在浏览器中。项目名、模型名、你发给 Agent 的原始消息、命令与工具结果不会被翻译。文档另有 [English](README.en.md)，葡语上游说明见 [README.pt-BR.md](README.pt-BR.md)。
 
 ## 功能与来源
 

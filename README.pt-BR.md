@@ -5,6 +5,14 @@
 <h1 align="center">Habblaud</h1>
 
 <p align="center">
+  <a href="README.md">简体中文</a> ·
+  <a href="README.en.md">English</a> ·
+  <a href="README.pt-BR.md">Português (Brasil)</a>
+</p>
+
+> Este arquivo preserva a documentação do upstream v0.8.0. Para a instalação e os recursos deste fork, consulte [简体中文](README.md) ou [English](README.en.md).
+
+<p align="center">
   <b>O escritório virtual dos seus agentes do Claude Code (e do Codex).</b><br />
   Cada projeto vira uma sala, cada agente vira um personagem em pixel art que mostra, em tempo real, o que está fazendo.
 </p>
