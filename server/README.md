@@ -1,6 +1,6 @@
 # Habblaud 服务器
 
-本目录是 Node HTTP 服务、会话来源、办公室模型、终端/历史流与本机桥。中文版默认指南在 [项目 README](../README.md)；上游葡语服务器说明保留为 [README.pt-BR.md](README.pt-BR.md)。
+本目录是 Node HTTP 服务、会话来源、办公室模型、终端/历史流与本机桥。中文指南在 [中文 README](../README.zh-CN.md)；葡语服务器说明见 [README.pt-BR.md](README.pt-BR.md)。
 
 ```bash
 npm run dev                 # 开发：同一 HTTP 端口运行服务器与 Vite
