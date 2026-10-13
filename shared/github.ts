@@ -2,7 +2,8 @@
 // projeto (festa ou alarme). Código puro, usado pelo servidor (eventos detectados nos transcripts, ver
 // server/sources/github.ts) e pelo simulador de demonstração.
 import { maskSecrets, truncate, type MarkedDescription } from './activity';
-import type { NoticeLevel, RoomEffect } from './types';
+import { productCopy, type ProductCopy } from './copy';
+import type { MessageRef, NoticeLevel, RoomEffect } from './types';
 
 export type GitHubEventKind = 'pr_opened' | 'pr_merged' | 'push' | 'ci_failed' | 'ci_passed' | 'release';
 
@@ -49,6 +50,26 @@ function ciWhat(ev: GitHubEvent): string | undefined {
 }
 
 /** Faixa curta da festa/alarme na sala (undefined = o evento não mexe na sala, ex.: push). */
+function bannerCopyOf(ev: GitHubEvent): ProductCopy | undefined {
+  const pr = ev.number !== undefined ? `PR #${ev.number}` : 'PR';
+  switch (ev.kind) {
+    case 'pr_opened':
+      return productCopy('{pr} aberto!', { pr });
+    case 'pr_merged':
+      return productCopy('{pr} mergeado!', { pr });
+    case 'release':
+      return ev.tag ? productCopy('Release {tag} no ar!', { tag: clean(ev.tag, 22) }) : productCopy('Release no ar!');
+    case 'ci_failed': {
+      const where = ciWhere(ev);
+      return where ? productCopy('CI falhou ({onde})', { onde: where }) : productCopy('CI falhou');
+    }
+    case 'ci_passed':
+      return productCopy('CI verde de novo!');
+    default:
+      return undefined;
+  }
+}
+
 export function bannerOf(ev: GitHubEvent): string | undefined {
   const pr = ev.number !== undefined ? `PR #${ev.number}` : 'PR';
   switch (ev.kind) {
@@ -77,6 +98,7 @@ export function githubEventKey(ev: GitHubEvent): string {
 export interface GitHubEventText {
   /** Aviso (toast). Ex.: "🎉 Danilo abriu o PR #12 em habblaud". */
   notice: string;
+  noticeI18n: MessageRef;
   level: NoticeLevel;
   /** Atividade do agente (feed e linha do tempo), com o marcador GITHUB_TOOL. */
   activity: MarkedDescription;
@@ -85,8 +107,8 @@ export interface GitHubEventText {
 /** Textos em PT-BR de um evento: aviso e atividade. */
 export function describeGitHubEvent(ev: GitHubEvent, agentName: string, roomName: string): GitHubEventText {
   const pr = ev.number !== undefined ? `o PR #${ev.number}` : 'um PR';
-  const act = (icon: string, text: string, detail?: string, error = false): MarkedDescription => {
-    const d: MarkedDescription = { kind: 'git', icon, text: clean(text, MAX_TEXT), tool: GITHUB_TOOL };
+  const act = (icon: string, copy: ProductCopy, detail?: string, error = false): MarkedDescription => {
+    const d: MarkedDescription = { kind: 'git', icon, text: clean(copy.text, MAX_TEXT), i18n: copy.i18n, tool: GITHUB_TOOL };
     const det = detail ?? ev.url ?? ev.repo;
     if (det) d.detail = clean(det, 300);
     if (error) d.error = true;
@@ -94,23 +116,25 @@ export function describeGitHubEvent(ev: GitHubEvent, agentName: string, roomName
   };
   switch (ev.kind) {
     case 'pr_opened':
-      return { notice: `🎉 ${agentName} abriu ${pr} em ${roomName}`, level: 'success', activity: act('🎉', `Abriu ${pr}`) };
+      return { notice: `🎉 ${agentName} abriu ${pr} em ${roomName}`, noticeI18n: ev.number !== undefined ? productCopy('🎉 {agente} abriu o PR #{numero} em {sala}', { agente: agentName, numero: ev.number, sala: roomName }).i18n : productCopy('🎉 {agente} abriu um PR em {sala}', { agente: agentName, sala: roomName }).i18n, level: 'success', activity: act('🎉', ev.number !== undefined ? productCopy('Abriu o PR #{numero}', { numero: ev.number }) : productCopy('Abriu um PR')) };
     case 'pr_merged':
-      return { notice: `🎉 ${agentName} mergeou ${pr} em ${roomName}`, level: 'success', activity: act('🎉', `Mergeou ${pr}`) };
+      return { notice: `🎉 ${agentName} mergeou ${pr} em ${roomName}`, noticeI18n: ev.number !== undefined ? productCopy('🎉 {agente} mergeou o PR #{numero} em {sala}', { agente: agentName, numero: ev.number, sala: roomName }).i18n : productCopy('🎉 {agente} mergeou um PR em {sala}', { agente: agentName, sala: roomName }).i18n, level: 'success', activity: act('🎉', ev.number !== undefined ? productCopy('Mergeou o PR #{numero}', { numero: ev.number }) : productCopy('Mergeou um PR')) };
     case 'release': {
       const tag = ev.tag ? clean(ev.tag, 24) : undefined;
       return {
         notice: `🎉 ${agentName} publicou ${tag ? `a release ${tag}` : 'uma release'} em ${roomName}`,
+        noticeI18n: tag ? productCopy('🎉 {agente} publicou a release {tag} em {sala}', { agente: agentName, tag, sala: roomName }).i18n : productCopy('🎉 {agente} publicou uma release em {sala}', { agente: agentName, sala: roomName }).i18n,
         level: 'success',
-        activity: act('🎉', tag ? `Publicou a release ${tag}` : 'Publicou uma release'),
+        activity: act('🎉', tag ? productCopy('Publicou a release {tag}', { tag }) : productCopy('Publicou uma release')),
       };
     }
     case 'push': {
       const branch = ev.branch ? clean(ev.branch, 28) : undefined;
       return {
         notice: `🚀 ${agentName} enviou commits ${branch ? `para ${branch} ` : ''}em ${roomName}`,
+        noticeI18n: branch ? productCopy('🚀 {agente} enviou commits para {branch} em {sala}', { agente: agentName, branch, sala: roomName }).i18n : productCopy('🚀 {agente} enviou commits em {sala}', { agente: agentName, sala: roomName }).i18n,
         level: 'info',
-        activity: act('🚀', branch ? `Enviou commits para ${branch}` : 'Enviou commits ao GitHub'),
+        activity: act('🚀', branch ? productCopy('Enviou commits para {branch}', { branch }) : productCopy('Enviou commits ao GitHub')),
       };
     }
     case 'ci_failed': {
@@ -118,8 +142,9 @@ export function describeGitHubEvent(ev: GitHubEvent, agentName: string, roomName
       const what = ciWhat(ev);
       return {
         notice: `🚨 CI falhou em ${roomName}${where ? ` (${where})` : ''}`,
+        noticeI18n: where ? productCopy('🚨 CI falhou em {sala} ({onde})', { sala: roomName, onde: where }).i18n : productCopy('🚨 CI falhou em {sala}', { sala: roomName }).i18n,
         level: 'warn',
-        activity: act('🚨', what ? `CI falhou: ${what}` : 'CI falhou', [ev.workflow, ev.branch, ev.url].filter(Boolean).join(' — ') || undefined, true),
+        activity: act('🚨', what ? productCopy('CI falhou: {etapa}', { etapa: clean(what, 28) }) : productCopy('CI falhou'), [ev.workflow, ev.branch, ev.url].filter(Boolean).join(' — ') || undefined, true),
       };
     }
     case 'ci_passed': {
@@ -127,8 +152,9 @@ export function describeGitHubEvent(ev: GitHubEvent, agentName: string, roomName
       const what = ciWhat(ev);
       return {
         notice: `✅ CI passou em ${roomName}${where ? ` (${where})` : ''}`,
+        noticeI18n: where ? productCopy('✅ CI passou em {sala} ({onde})', { sala: roomName, onde: where }).i18n : productCopy('✅ CI passou em {sala}', { sala: roomName }).i18n,
         level: 'success',
-        activity: act('✅', what ? `CI passou: ${what}` : 'CI passou', [ev.workflow, ev.branch, ev.url].filter(Boolean).join(' — ') || undefined),
+        activity: act('✅', what ? productCopy('CI passou: {etapa}', { etapa: clean(what, 28) }) : productCopy('CI passou'), [ev.workflow, ev.branch, ev.url].filter(Boolean).join(' — ') || undefined),
       };
     }
   }
@@ -153,8 +179,9 @@ export class RoomEffects {
   /** Aplica um evento à sala; true se o efeito visível mudou. */
   apply(roomId: string, ev: GitHubEvent, now: number, agentId?: string): boolean {
     const slots = this.rooms.get(roomId) ?? {};
-    const make = (kind: RoomEffect['kind'], text: string, ms: number): RoomEffect => {
-      const fx: RoomEffect = { kind, text, at: now, until: now + ms };
+    const make = (kind: RoomEffect['kind'], ev: GitHubEvent, ms: number): RoomEffect => {
+      const copy = bannerCopyOf(ev)!;
+      const fx: RoomEffect = { kind, text: bannerOf(ev)!, i18n: copy.i18n, at: now, until: now + ms };
       if (agentId) fx.agentId = agentId;
       return fx;
     };
@@ -162,18 +189,18 @@ export class RoomEffects {
       case 'pr_opened':
       case 'pr_merged':
       case 'release':
-        slots.party = make('party', bannerOf(ev)!, PARTY_MS);
+        slots.party = make('party', ev, PARTY_MS);
         break;
       case 'ci_failed':
         // o vermelho mais novo vale na hora (encerra uma festa em andamento)
-        slots.alarm = make('alarm', bannerOf(ev)!, ALARM_MS);
+        slots.alarm = make('alarm', ev, ALARM_MS);
         delete slots.party;
         break;
       case 'ci_passed':
         // CI verde só muda a sala se apagar um alarme (aí vira festa).
         if (!slots.alarm || slots.alarm.until <= now) return false;
         delete slots.alarm;
-        slots.party = make('party', bannerOf(ev)!, PARTY_MS);
+        slots.party = make('party', ev, PARTY_MS);
         break;
       default:
         return false;

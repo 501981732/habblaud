@@ -1,8 +1,9 @@
 // Seção "Vida social" da gaveta do agente: o que está fazendo numa roda, carteira de moedinhas,
 // placar, personalidade, amizades/rivalidades com quem está no escritório e o extrato.
 import type { AgentSocial } from '../world/api';
+import { getLocale, t } from '../../../shared/i18n';
 import type { UiContext } from './context';
-import { h, setHidden, setText, setTitle } from './dom';
+import { h, setHidden, setRawText, setText, setTitle } from './dom';
 import { plural, relativeTime } from './format';
 
 /** "+🪙10" / "−🪙10" (sinal tipográfico de menos). */
@@ -12,8 +13,36 @@ export function coinDelta(delta: number): string {
 
 /** "3 vitórias · 1 derrota" (ou "Sem partidas ainda"). */
 export function recordText(wins: number, losses: number): string {
-  if (!wins && !losses) return 'Sem partidas ainda';
+  if (!wins && !losses) return t('Sem partidas ainda');
   return `${plural(wins, 'vitória', 'vitórias')} · ${plural(losses, 'derrota', 'derrotas')}`;
+}
+
+/** Translate generated activity labels while keeping character names verbatim. */
+function localizeSocialDoing(source: string): string {
+  if (getLocale() === 'pt-BR') return source;
+  let text = source;
+  for (const label of ['Vendo futebol na TV', 'Vendo novela na TV', 'Vendo desenho na TV', 'Jogando videogame', 'Duelo no fliperama', 'Jogando pingue-pongue', 'Papo na copa', 'Conversando', 'Jokenpô', 'Se arrumando no espelho']) {
+    text = text.replace(label, t(label));
+  }
+  text = text.replace(/ com ([^·(]+)(?= · valendo| \(a caminho\)|$)/, (_all, names: string) => t('，和 {names}', { names: names.trim().replace(/ e /g, '、') }));
+  text = text.replace(/ · valendo 🪙(\d+)/, (_all, amount: string) => t(' · valendo 🪙{amount}', { amount }));
+  text = text.replace(' (a caminho)', t(' (a caminho)'));
+  return text;
+}
+
+function localizeLedgerText(source: string): string {
+  if (getLocale() === 'pt-BR') return source;
+  let match = /^(\d+) tarefas já concluídas$/.exec(source);
+  if (match) return t('{n} tarefas já concluídas', { n: match[1] });
+  match = /^Tarefa concluída: (.*)$/.exec(source);
+  if (match) return t('Tarefa concluída: {title}', { title: match[1] });
+  match = /^Entregou: (.*)$/.exec(source);
+  if (match) return t('Entregou: {result}', { result: match[1] });
+  match = /^Perdeu (.*) para (.*)$/.exec(source);
+  if (match) return t('Perdeu {what} para {name}', { what: match[1], name: match[2] });
+  match = /^Ganhou (.*) de (.*)$/.exec(source);
+  if (match) return t('Ganhou {what} de {name}', { what: match[1], name: match[2] });
+  return t(source);
 }
 
 const LEDGER_SHOWN = 6;
@@ -78,20 +107,20 @@ export class SocialSection {
     setHidden(this.el, !s);
     if (!s) return;
     setText(this.extra, `🪙 ${s.coins}`);
-    setText(this.doing, s.doing ?? '');
+    setRawText(this.doing, s.doing ? localizeSocialDoing(s.doing) : '');
     setHidden(this.doing, !s.doing);
-    setText(this.coins, `${s.coins} moedinhas`);
+    setText(this.coins, `${s.coins} ${t('moedinhas')}`);
     setText(this.record, recordText(s.wins, s.losses));
-    setText(this.earned, `${coinDelta(s.earned)} ganhos trabalhando`);
-    setText(this.phrase, `Bordão: “${s.catchphrase}”`);
+    setText(this.earned, `${coinDelta(s.earned)} ${t('ganhos trabalhando')}`);
+    setText(this.phrase, `${t('Bordão:')} “${t(s.catchphrase)}”`);
 
-    const tk = s.traits.map((t) => t.label).join('|');
+    const tk = `${getLocale()}|${s.traits.map((t) => t.label).join('|')}`;
     if (tk !== this.keys.traits) {
       this.keys.traits = tk;
-      this.traits.replaceChildren(...s.traits.map((t) => h('span', { class: 'ui-trait', title: t.desc, text: `${t.emoji} ${t.label}` })));
+      this.traits.replaceChildren(...s.traits.map((trait) => h('span', { class: 'ui-trait', title: t(trait.desc), text: `${trait.emoji} ${t(trait.label)}` })));
     }
 
-    const bk = s.bonds.map((b) => `${b.id}:${b.kind}:${b.name}:${b.record?.join('-') ?? ''}`).join('|');
+    const bk = `${getLocale()}|${s.bonds.map((b) => `${b.id}:${b.kind}:${b.name}:${b.record?.join('-') ?? ''}`).join('|')}`;
     if (bk !== this.keys.bonds) {
       this.keys.bonds = bk;
       const link = (b: AgentSocial['bonds'][number]) => {
@@ -100,7 +129,9 @@ export class SocialSection {
           class: 'ui-social__name',
           type: 'button',
           text: label,
-          title: b.record ? `Retrospecto contra ${b.name}: ${recordText(b.record[0], b.record[1])}` : `Ver ${b.name}`,
+          title: b.record ? t('Retrospecto contra {name}: {record}', { name: b.name, record: recordText(b.record[0], b.record[1]) }) : t('Ver {name}', { name: b.name }),
+          rawText: true,
+          rawTitle: true,
           on: { click: () => this.ctx.select({ type: 'agent', id: b.id }, { focus: true }) },
         });
       };
@@ -113,7 +144,7 @@ export class SocialSection {
     }
 
     const items = s.ledger.slice(0, LEDGER_SHOWN);
-    const lk = items.map((e) => `${e.at}:${e.delta}:${e.text}`).join('|') + `@${Math.floor(now / 30_000)}`;
+    const lk = `${getLocale()}|${items.map((e) => `${e.at}:${e.delta}:${e.text}`).join('|')}@${Math.floor(now / 30_000)}`;
     if (lk !== this.keys.ledger) {
       this.keys.ledger = lk;
       this.ledger.replaceChildren(
@@ -122,7 +153,7 @@ export class SocialSection {
             'li',
             { class: `ui-social__entry ${e.delta >= 0 ? 'is-plus' : 'is-minus'}` },
             h('span', { class: 'ui-social__delta', text: coinDelta(e.delta) }),
-            h('span', { class: 'ui-social__what', text: `${e.icon} ${e.text}` }),
+            h('span', { class: 'ui-social__what', text: `${e.icon} ${localizeLedgerText(e.text)}`, rawText: true }),
             h('time', { class: 'ui-social__when', text: relativeTime(e.at, now) }),
           ),
         ),

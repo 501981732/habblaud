@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../../../shared/i18n';
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('zh-CN'));
 import type { AgentInfo, AskQuestion, PermissionRequestInfo } from '../../../shared/types';
 import {
   answerFor,
@@ -49,6 +52,13 @@ describe('responder pelo escritório (peças puras)', () => {
     expect(expiryText(25_000, 24_200, true)).toBe('volta ao terminal em 1 s');
     expect(expiryText(25_000, 25_000, true)).toBe('voltando ao terminal…');
     expect(expiryText(5 * 60_000, 0, true)).toBe('volta ao terminal em 5 min');
+  });
+
+  it('expiryText em zh-CN não mistura unidades nem texto em português', async () => {
+    const { setLocale } = await import('../../../shared/i18n');
+    setLocale('zh-CN');
+    expect(expiryText(25_000, 0, true)).toBe('25 秒后返回终端');
+    expect(expiryText(10 * 60_000, 0)).toBe('10 分钟后返回终端');
   });
 
   it('cartão do Codex: sem "sempre permitir" nem "interromper", recusa com motivo e o aviso do terminal', () => {

@@ -1,10 +1,11 @@
 // Barra lateral: busca, filtro por conta e a lista de salas -> agentes -> subagentes.
 import type { AccountInfo, AgentInfo } from '../../../shared/types';
+import { t as translate } from '../../../shared/i18n';
 import { roomTheme } from '../art';
 import type { UiComponent, UiContext } from './context';
 import { moveAgent, orderAgents } from './agentorder';
 import { moveRoom, orderRooms } from './roomorder';
-import { h, iconButton, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle } from './dom';
+import { h, iconButton, KeyedList, setAttr, setHidden, setRawText, setRawTitle, setStyleVar, setText, setTitle } from './dom';
 import { plural, shortPath } from './format';
 import { ICONS } from './icons';
 import { groupRooms, type AgentNode, type RoomGroup } from './model';
@@ -93,9 +94,9 @@ export class Sidebar implements UiComponent {
       update: (b, a) => {
         const hidden = this.ctx.prefs.hiddenAccounts.includes(a.id);
         updateAccountChip(b.firstElementChild as HTMLElement, a);
-        setText(b.lastElementChild!, a.name);
+        setRawText(b.lastElementChild!, a.name);
         setAttr(b, 'aria-pressed', String(!hidden));
-        setTitle(b, hidden ? `Mostrar a ${a.name} na lista, no feed e nos avisos` : `Ocultar a ${a.name} na lista, no feed e nos avisos (o escritório continua mostrando todos)`);
+        setTitle(b, translate(hidden ? 'Mostrar {name} na lista, no feed e nos avisos' : 'Ocultar a {name} na lista, no feed e nos avisos (o escritório continua mostrando todos)', { name: a.name }));
         b.classList.toggle('is-off', hidden);
       },
     });
@@ -243,13 +244,14 @@ export class Sidebar implements UiComponent {
   private updateRoom(section: HTMLElement, g: RoomGroup): void {
     const r = this.roomRefs.get(section)!;
     const sel = this.ctx.selection();
-    setText(r.name, g.room.name);
+    setRawText(r.name, g.room.name);
     const present = g.agents.filter((a) => a.status !== 'offline').length;
     setText(r.count, String(present));
-    setTitle(r.count, plural(present, 'agente', 'agentes'));
-    setText(r.path, shortPath(g.room.path));
-    setTitle(r.head, `${g.room.path}\nClique para ver a sala`);
-    setAttr(r.head, 'aria-label', `Sala ${g.room.name}, ${plural(present, 'agente', 'agentes')}`);
+    const countLabel = translate(present === 1 ? '{count} agente' : '{count} agentes', { count: present });
+    setTitle(r.count, countLabel);
+    setRawText(r.path, shortPath(g.room.path));
+    setTitle(r.head, translate('{path}\nClique para ver a sala', { path: g.room.path }));
+    setAttr(r.head, 'aria-label', translate('Sala {name}, {count}', { name: g.room.name, count: countLabel }));
     r.accs.sync(g.accounts.map((id) => this.ctx.account(id) ?? id));
     const selected = sel?.type === 'room' && sel.id === g.room.id;
     r.head.classList.toggle('is-selected', selected);
@@ -260,7 +262,7 @@ export class Sidebar implements UiComponent {
     setHidden(r.tasks, t.total === 0);
     if (t.total > 0) {
       updateProgress(r.tasksBar, t.completed, t.total, t.inProgress);
-      setText(r.tasksText, `${t.completed}/${t.total} tarefas`);
+      setText(r.tasksText, translate('{done}/{total} tarefas', { done: t.completed, total: t.total }));
     }
     // Ordem escolhida pelo usuário (arrastando as linhas), guardada no navegador.
     const ordered = orderAgents(g.room.id, g.nodes, (n) => n.agent.sessionId);

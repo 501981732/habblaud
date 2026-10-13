@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { localize, setLocale } from './i18n';
 import {
   describeCommand,
   describePrompt,
@@ -130,6 +131,7 @@ describe('shells', () => {
     });
     expect(describeShellJob('Bash', { command: 'GITHUB_TOKEN=ghp_0123456789abcdefghij npm run build' })).toEqual({
       label: 'Compilando o projeto',
+      labelI18n: { key: 'Compilando o projeto' },
       command: 'GITHUB_TOKEN=*** npm run build',
       kind: 'shell',
     });
@@ -139,9 +141,23 @@ describe('shells', () => {
     expect(describeShellJob('Monitor', { description: 'erros no deploy.log', command: 'tail -f deploy.log' })).toMatchObject({ label: 'erros no deploy.log', kind: 'monitor' });
     expect(describeShellJob('Monitor', { ws: { url: 'wss://events.example.com/stream' } })).toEqual({
       label: 'Escutando events.example.com',
+      labelI18n: { key: 'Escutando {dominio}', params: { dominio: 'events.example.com' } },
       command: 'wss://events.example.com/stream',
       kind: 'monitor',
     });
+  });
+
+  it('traduz somente os rótulos sintetizados e os detalhes de produto', () => {
+    const known = describeShellJob('Bash', { command: 'npm run build' });
+    const supplied = describeShellJob('Bash', { command: 'npm run build', description: 'Revisar texto original' });
+    const todo = describeTool('TodoWrite', { todos: [{ content: 'tarefa', status: 'completed' }] });
+    setLocale('zh-CN');
+    expect(localize({ text: known.label, i18n: known.labelI18n })).toBe('构建项目');
+    expect(supplied.labelI18n).toBeUndefined();
+    expect(todo.detailI18n).toEqual({ key: '{done}/{total} concluídas', params: { done: 1, total: 1 } });
+    expect(localize({ text: todo.detail!, i18n: todo.detailI18n })).toBe('已完成 1/1 项');
+    expect(SPECIAL.waitingShell(known.label, 1, known.command, known.labelI18n).i18n?.key).toBe('Esperando o shell');
+    setLocale('pt-BR');
   });
 
   it('balão de espera e fim do shell (marcadores para o mundo), sempre em até 46 caracteres com a duração inteira', () => {
@@ -149,11 +165,24 @@ describe('shells', () => {
     expect(SPECIAL.waitingShell('Build', 3).text).toBe('Esperando 3 shells: Build');
     expect(SPECIAL.waitingShell(undefined).text).toBe('Esperando o shell');
     const ok = SPECIAL.shellDone('Rodar a suíte completa em grupos com phpunit', 'ok', 482_000, 'vendor/bin/phpunit');
-    expect(ok).toEqual({ kind: 'run', icon: '✅', text: 'Shell terminou: Rodar a suíte compl… (8min 2s)', detail: 'vendor/bin/phpunit', tool: 'ShellDone' });
+    expect(ok).toMatchObject({ kind: 'run', icon: '✅', text: 'Shell terminou: Rodar a suíte compl… (8min 2s)', detail: 'vendor/bin/phpunit', tool: 'ShellDone', i18n: { key: 'Shell terminou: {rotulo}{duracao}', params: { duracao: '(8min 2s)' } } });
     expect(ok.text.length).toBeLessThanOrEqual(46);
-    expect(SPECIAL.shellDone('Migração', 'failed')).toEqual({ kind: 'run', icon: '❌', text: 'Shell falhou: Migração', tool: 'ShellDone', error: true });
+    expect(SPECIAL.shellDone('Migração', 'failed')).toMatchObject({ kind: 'run', icon: '❌', text: 'Shell falhou: Migração', tool: 'ShellDone', error: true, i18n: { key: 'Shell falhou: {rotulo}', params: { rotulo: 'Migração' } } });
     expect(SPECIAL.shellDone('Migração', 'killed')).toMatchObject({ icon: '🛑', text: 'Shell interrompido: Migração', error: true });
   });
+});
+
+it('localiza somente o resumo do produto e mantém comando e descrição do modelo como dados', () => {
+  setLocale('zh-CN');
+  const file = describeTool('Read', { file_path: '/tmp/原始名字.ts' });
+  expect(file.i18n).toEqual({ key: 'Lendo {arquivo}', params: { arquivo: '原始名字.ts' } });
+  expect(localize(file)).toBe('读取 原始名字.ts');
+  const raw = describeCommand('comando_desconhecido', 'descrição do modelo em português');
+  expect(raw.i18n).toBeUndefined();
+  expect(raw.text).toBe('descrição do modelo em português');
+  setLocale('pt-BR');
+  expect(localize(file)).toBe('Lendo 原始名字.ts');
+  setLocale('zh-CN');
 });
 
 describe('AskUserQuestion no escritório', () => {

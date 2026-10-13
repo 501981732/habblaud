@@ -5,12 +5,13 @@
 // Desempenho: só percorre as salas com efeito (quase sempre nenhuma); sprites em cache; o confete
 // usa o pool fixo de partículas, com taxa limitada por sala.
 import { TILE } from '../../art/api';
+import { localize } from '../../../../shared/i18n';
 import type { HeadInfo } from './renderer';
 import type { Particles } from './particles';
 import type { RoomFx } from '../sim/github';
 import type { Sim } from '../sim/sim';
 
-const UI_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+const UI_FONT = 'ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
 const BANNER_FONT = `800 11.5px ${UI_FONT}`;
 const BANNER_H = 22;
 
@@ -300,7 +301,8 @@ export function drawFxBanner(
   const wave = !still && party ? Math.sin((now - fx.start) / 320) * 1.5 : 0;
   const y = Math.round(top - enter * 10 + wave);
   const notch = 6;
-  const text = maxW >= 70 ? fit(BANNER_FONT, `${emoji} ${fx.text}`, maxW - 24 - 2 * notch) : '';
+  const label = fx.i18n ? localize({ text: fx.text, i18n: fx.i18n }) : fx.text;
+  const text = maxW >= 70 ? fit(BANNER_FONT, `${emoji} ${label}`, maxW - 24 - 2 * notch) : '';
   ctx.save();
   ctx.globalAlpha = fade;
   ctx.font = BANNER_FONT;

@@ -2,8 +2,9 @@
 // nova (quem consulta é o servidor, server/updates/checker.ts), o aviso único por versão e a seção "Sobre"
 // das configurações (estado da verificação, "Verificar agora", novidades e como atualizar).
 import type { Notice, OfficeSnapshot, UpdateStatus } from '../../../shared/types';
+import { t } from '../../../shared/i18n';
 import type { UiComponent, UiContext } from './context';
-import { h, setAttr, setHidden, setText, setTitle, setVariant } from './dom';
+import { h, setAttr, setHidden, setRawTitle, setText, setTitle, setVariant } from './dom';
 import { formatDateTime, relativeTime } from './format';
 import { pixelIcon } from './icons';
 import { safeLocalStorage } from './prefs';
@@ -32,32 +33,32 @@ export type UpdateTone = 'new' | 'ok' | 'pending' | 'warn' | 'off';
 /** Linha de estado da seção "Sobre". */
 export function updateStatusLine(version: string, s: UpdateStatus | undefined, now: number): { tone: UpdateTone; text: string } {
   if (!s) return { tone: 'off', text: 'Este servidor não verifica versões novas.' };
-  const checked = s.checkedAt ? ` · verificado ${relativeTime(s.checkedAt, now)}` : '';
+  const checked = s.checkedAt ? t(' · verificado {ago}', { ago: relativeTime(s.checkedAt, now) }) : '';
   switch (s.state) {
     case 'off':
       return {
         tone: 'off',
         text: s.repo
-          ? 'Verificação de versão nova desligada (HABBLAUD_UPDATE_CHECK=0).'
-          : 'Verificação de versão nova desligada: o package.json não aponta um repositório no GitHub.',
+          ? t('Verificação de versão nova desligada (HABBLAUD_UPDATE_CHECK=0).')
+          : t('Verificação de versão nova desligada: o package.json não aponta um repositório no GitHub.'),
       };
     case 'pending':
       return { tone: 'pending', text: 'Verificando se há versão nova…' };
     case 'error':
-      if (s.available && s.latest) return { tone: 'new', text: `Nova versão disponível: v${s.latest}. A última verificação falhou (${s.error ?? 'erro'}).` };
-      return { tone: 'warn', text: `Não deu para verificar agora: ${s.error ?? 'erro desconhecido'}${s.checkedAt ? ` · última verificação ${relativeTime(s.checkedAt, now)}` : ''}.` };
+      if (s.available && s.latest) return { tone: 'new', text: t('Nova versão disponível: v{version}. A última verificação falhou ({error}).', { version: s.latest, error: s.error ?? 'erro' }) };
+      return { tone: 'warn', text: t('Não deu para verificar agora: {error}{checked}.', { error: s.error ?? 'erro desconhecido', checked: s.checkedAt ? t(' · última verificação {ago}', { ago: relativeTime(s.checkedAt, now) }) : '' }) };
     case 'ok':
-      if (s.available && s.latest) return { tone: 'new', text: `Nova versão disponível: v${s.latest}${s.publishedAt ? `, publicada em ${formatDateTime(s.publishedAt)}` : ''}.` };
-      if (!s.latest) return { tone: 'ok', text: `Nenhuma versão publicada no GitHub ainda${checked}.` };
-      if (s.latest !== version) return { tone: 'ok', text: `Você está à frente da última versão publicada (v${s.latest})${checked}.` };
-      return { tone: 'ok', text: `Você está na versão mais recente${checked}.` };
+      if (s.available && s.latest) return { tone: 'new', text: t('Nova versão disponível: v{version}{published}.', { version: s.latest, published: s.publishedAt ? t(', publicada em {date}', { date: formatDateTime(s.publishedAt) }) : '' }) };
+      if (!s.latest) return { tone: 'ok', text: t('Nenhuma versão publicada no GitHub ainda{checked}.', { checked }) };
+      if (s.latest !== version) return { tone: 'ok', text: t('Você está à frente da última versão publicada (v{version}){checked}.', { version: s.latest, checked }) };
+      return { tone: 'ok', text: t('Você está na versão mais recente{checked}.', { checked }) };
   }
 }
 
 /** Dica do número de versão na barra superior. */
 export function versionChipTitle(version: string, s: UpdateStatus | undefined, now: number): string {
-  if (s?.available && s.latest) return `Nova versão do Habblaud: v${s.latest} (você usa a v${version}). Clique para ver as novidades e como atualizar.`;
-  return `Habblaud v${version}. ${updateStatusLine(version, s, now).text} Clique para ver detalhes.`;
+  if (s?.available && s.latest) return t('Nova versão do Habblaud: v{latest} (você usa a v{version}). Clique para ver as novidades e como atualizar.', { latest: s.latest, version });
+  return t('Habblaud v{version}. {status} Clique para ver detalhes.', { version, status: updateStatusLine(version, s, now).text });
 }
 
 /** Número da versão na barra superior; vira o selo "Nova versão" quando há release mais nova. */
@@ -81,13 +82,13 @@ export class VersionChip implements UiComponent {
     const fresh = !!info?.updates?.available && !!info.updates.latest;
     this.settingsBtn.classList.toggle('has-update', fresh);
     const label = fresh ? 'Configurações (nova versão disponível)' : 'Configurações';
-    setAttr(this.settingsBtn, 'aria-label', label);
+    setAttr(this.settingsBtn, 'aria-label', t(label));
     setTitle(this.settingsBtn, label);
     if (!info) return;
     this.el.classList.toggle('is-new', fresh);
     setText(this.text, fresh ? 'Nova versão' : `v${info.version}`);
     const title = versionChipTitle(info.version, info.updates, this.ctx.now());
-    setTitle(this.el, title);
+    setRawTitle(this.el, title);
     setAttr(this.el, 'aria-label', title);
   }
 }

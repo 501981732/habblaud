@@ -1,7 +1,8 @@
 // Linha de agente (avatar, nome, conta, papel, status e atividade), usada na barra lateral e na gaveta.
 import type { AccountInfo, AgentInfo } from '../../../shared/types';
+import { localize, t } from '../../../shared/i18n';
 import { createAvatar, updateAvatar, type AvatarSize } from './avatar';
-import { h, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
+import { h, setAttr, setHidden, setRawText, setRawTitle, setStyleVar, setText, setTitle, setVariant } from './dom';
 import { formatDuration } from './format';
 import { activityFallback, shellLine, shellWaitIn, statusLabel } from './model';
 import {
@@ -71,18 +72,18 @@ export function updateAgentRow(
   row.dataset.id = agent.id;
   updateAvatar(r.avatar, agent, r.size);
   setStyleVar(row, '--acc', account?.color ?? '#8b98b3');
-  setText(r.name, agent.name);
+  setRawText(r.name, agent.name);
   updateAccountChip(r.chip, account, agent.account, agent.provider);
   updateRoleBadge(r.role, agent);
   const title = agent.title?.trim() ?? '';
-  setText(r.task, title);
-  setTitle(r.task, title);
+  setRawText(r.task, title);
+  setRawTitle(r.task, title);
   setHidden(r.task, !title);
   // Agente principal ocioso há 1 min ou mais: o tempo aparece no lugar do "Principal".
   const idleFor = agent.kind === 'main' && agent.status === 'idle' && agent.statusSince ? now - agent.statusSince : 0;
   const showIdle = idleFor >= 60_000;
-  setText(r.since, showIdle ? `ocioso ${formatDuration(idleFor)}` : '');
-  setTitle(r.since, showIdle ? `Ocioso há ${formatDuration(idleFor)}` : '');
+  setText(r.since, showIdle ? t('ocioso {duration}', { duration: formatDuration(idleFor) }) : '');
+  setTitle(r.since, showIdle ? t('Ocioso há {duration}', { duration: formatDuration(idleFor) }) : '');
   setHidden(r.since, !showIdle);
   setHidden(r.role, showIdle);
   // Esperando um shell (ou parado num comando longo): ampulheta no ponto e o cronômetro na linha de atividade.
@@ -95,10 +96,10 @@ export function updateAgentRow(
   row.classList.toggle('is-selected', selected);
   setAttr(row, 'aria-current', selected ? 'true' : null);
   // Para leitores de tela, o tempo em minutos (o cronômetro mudaria o rótulo a cada segundo).
-  const doing = wait ? `${shellLine(wait, now).label}, há ${formatDuration(now - wait.since)}` : agent.activity?.text;
+  const doing = wait ? t('{label}, há {duration}', { label: shellLine(wait, now).label, duration: formatDuration(now - wait.since) }) : agent.activity ? (agent.activity.i18n ? localize({ text: agent.activity.text, i18n: agent.activity.i18n }) : agent.activity.text) : '';
   setAttr(
     row,
     'aria-label',
-    `${agent.name}, ${agent.kind === 'main' ? 'agente principal' : `subagente ${agent.role}`}, ${account?.name ?? agent.account}${agent.provider === 'codex' ? ' (Codex)' : ''}, ${statusLabel(status)}${doing ? `: ${doing}` : ''}`,
+    t('{name}, {role}, {account}, {status}{doing}', { name: agent.name, role: agent.kind === 'main' ? t('Agente principal') : t('subagente {role}', { role: agent.role }), account: `${account?.name ?? agent.account}${agent.provider === 'codex' ? ' (Codex)' : ''}`, status: statusLabel(status), doing: doing ? `: ${doing}` : '' }),
   );
 }

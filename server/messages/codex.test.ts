@@ -61,10 +61,13 @@ describe('codex queue (binário falso)', () => {
   });
 
   it.runIf(FAKE_CODEX_RUNS)('erro: a 1ª linha do stderr; prazo esgotado; texto com NUL e thread inválido nem rodam', async () => {
-    const run = runner(400);
+    // Process startup can exceed the deliberately short timeout under parallel
+    // test load. Exercise stderr with the normal deadline; reserve 400 ms for
+    // the fixture that intentionally never responds.
+    const run = runner();
     const gone = await run(job({ thread: GONE_THREAD }));
     expect(gone).toEqual({ ok: false, error: expect.stringMatching(/^Error: failed to queue session message: .*no rollout found for thread id 0199aaaa/) });
-    expect(await run(job({ thread: SLOW_THREAD }))).toEqual({ ok: false, error: 'o codex queue não respondeu em 0 s (a mensagem pode ter entrado na fila mesmo assim)' });
+    expect(await runner(400)(job({ thread: SLOW_THREAD }))).toEqual({ ok: false, error: 'o codex queue não respondeu em 0 s (a mensagem pode ter entrado na fila mesmo assim)' });
     const before = fakeCodexCalls(log).length;
     expect(await run(job({ text: 'a\u0000b' }))).toEqual({ ok: false, error: 'a mensagem tem caracteres que não dá para mandar ao Codex' });
     expect(await run(job({ thread: 'nome-da-sessao' }))).toEqual({ ok: false, error: 'id de thread do Codex inválido' });

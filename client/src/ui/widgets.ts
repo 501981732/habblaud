@@ -1,10 +1,11 @@
 // Peças visuais reutilizadas pelos painéis: chip de conta (e o selo "Codex"), ponto de status, selo de papel, barra
 // de progresso.
 import type { AccountInfo, Activity, AgentInfo, AgentStatus, Provider } from '../../../shared/types';
-import { h, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
+import { localize, t } from '../../../shared/i18n';
+import { h, setAttr, setHidden, setRawText, setRawTitle, setStyleVar, setText, setTitle, setVariant } from './dom';
 import { WORDMARK } from './icons';
 import { shellDoneKind, shellLine, shellStage, statusLabel, type ShellWait } from './model';
-import { accountChipLabel, accountProvider, fallbackShort, showsProviderTag } from './provider';
+import { accountChipLabel, accountProvider, fallbackShort, providerName, showsProviderTag } from './provider';
 
 /**
  * Chip quadrado com a letra curta da conta ("C", "D") na cor da conta. Conta do Codex: o chip fica vazado (fundo
@@ -21,7 +22,7 @@ export function updateAccountChip(chip: HTMLElement, account: AccountInfo | unde
   setStyleVar(chip, '--acc', account?.color ?? '#8b98b3');
   setAttr(chip, 'data-provider', p === 'codex' ? 'codex' : null);
   const label = accountChipLabel(account, fallbackId, p);
-  setTitle(chip, label);
+  setRawTitle(chip, label);
   setAttr(chip, 'aria-label', label);
 }
 
@@ -33,6 +34,9 @@ export function createProviderTag(extra = ''): HTMLElement {
 /** Mostra o selo só para o Codex (e não repete quando o nome da conta já diz "Codex"). */
 export function updateProviderTag(tag: HTMLElement, provider: Provider, accountName = ''): void {
   setHidden(tag, !showsProviderTag(provider, accountName));
+  setText(tag, providerName(provider));
+  setRawTitle(tag, provider === 'claude' ? '' : `Agent: ${providerName(provider)}`);
+  setAttr(tag, 'data-provider', provider);
 }
 
 /** Quadradinho de status (pixel), com pulso quando precisa de você. */
@@ -44,7 +48,7 @@ export function updateStatusDot(dot: HTMLElement, status: AgentStatus): void {
   setVariant(dot, 'is-', status);
   const label = statusLabel(status);
   setAttr(dot, 'aria-label', label);
-  setTitle(dot, label);
+  setRawTitle(dot, label);
 }
 
 export function createRoleBadge(): HTMLElement {
@@ -54,7 +58,7 @@ export function createRoleBadge(): HTMLElement {
 export function updateRoleBadge(badge: HTMLElement, agent: Pick<AgentInfo, 'kind' | 'role' | 'background'>): void {
   setText(badge, agent.kind === 'main' ? 'Principal' : agent.role || 'Subagente');
   setVariant(badge, 'ui-role--', agent.kind);
-  setTitle(badge, agent.kind === 'main' ? 'Agente principal' : `Subagente: ${agent.role}${agent.background ? ' (em segundo plano)' : ''}`);
+  setRawTitle(badge, agent.kind === 'main' ? t('Agente principal') : t('Subagente: {role}{background}', { role: agent.role || t('Subagente'), background: agent.background ? t(' (em segundo plano)') : '' }));
 }
 
 /** Barra de progresso fina; `value` 0–1. */
@@ -96,7 +100,7 @@ function activityParts(el: HTMLElement): [HTMLElement, HTMLElement, HTMLElement,
 export function updateActivityLine(el: HTMLElement, activity: Activity | undefined, fallback = 'Sem atividade ainda'): void {
   const [icon, text, time, count] = activityParts(el);
   setText(icon, activity?.icon ?? '·');
-  setText(text, activity?.text ?? fallback);
+  setRawText(text, activity ? (activity.i18n ? localize({ text: activity.text, i18n: activity.i18n }) : activity.text) : fallback);
   setHidden(time, true);
   setHidden(count, true);
   el.classList.remove('is-shell');
@@ -105,7 +109,11 @@ export function updateActivityLine(el: HTMLElement, activity: Activity | undefin
   const done = shellDoneKind(activity);
   el.classList.toggle('is-shell-ok', done === 'ok');
   el.classList.toggle('is-shell-fail', done === 'fail');
-  setTitle(el, activity ? (activity.detail ? `${activity.text}\n${activity.detail}` : activity.text) : fallback);
+  if (activity) {
+    const title = activity.i18n ? localize({ text: activity.text, i18n: activity.i18n }) : activity.text;
+    const detail = activity.detailI18n ? localize({ text: activity.detail ?? '', i18n: activity.detailI18n }) : activity.detail;
+    setRawTitle(el, detail ? `${title}\n${detail}` : title);
+  } else setRawTitle(el, fallback);
 }
 
 /** Mesma linha para quem espera um shell: "⏳ <label> · 12:31 ×2", com o tempo correndo. */
@@ -122,9 +130,9 @@ export function updateShellActivityLine(el: HTMLElement, wait: ShellWait, now: n
   el.classList.remove('is-error', 'is-shell-ok', 'is-shell-fail');
   const stage = shellStage(now - wait.since);
   const main = wait.main;
-  setTitle(
+  setRawTitle(
     el,
-    [line.text, main?.command && main.command !== main.label ? main.command : '', `${stage.emoji} ${stage.text}`].filter(Boolean).join('\n'),
+    [line.text, main?.command && main.command !== main.label ? main.command : '', `${stage.emoji} ${t(stage.text)}`].filter(Boolean).join('\n'),
   );
 }
 

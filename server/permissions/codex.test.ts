@@ -3,6 +3,7 @@
 // permitir" = unsupported), sem a busca da resposta no transcript, waitingFor "aprovar um comando", e os títulos pelos
 // nomes do Codex (Bash, acesso à rede, apply_patch, request_permissions, mcp__…, write_stdin). Dados sintéticos.
 import { describe, expect, it } from 'vitest';
+import { localize, setLocale } from '../../shared/i18n';
 import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
@@ -70,6 +71,18 @@ function registered(r: ReturnType<PermissionRegistry['register']>): string {
 const snapAgent = (office: Office, id: string) => office.commit().snapshot.agents.find((a) => a.id === id);
 
 describe('PermissionRegistry: pedidos do Codex', () => {
+  it('emite refs para cópia gerada em cartão, atividade e aviso', () => {
+    const { office, registry } = setup();
+    const id = registered(registry.register(codexInput({ tool_input: { command: 'curl https://example.com', description: 'network-access example.com' } })));
+    const permission = registry.detail(id)!;
+    expect(permission).toMatchObject({ i18n: { key: 'Acessar a rede: {alvo}' }, titleI18n: { key: 'Rede({alvo})' } });
+    const activity = snapAgent(office, MAIN)!.activity!;
+    expect(activity).toMatchObject({ i18n: { key: 'Pede permissão' }, detailI18n: { key: 'Rede({alvo})' } });
+    setLocale('zh-CN');
+    expect(localize({ text: permission.text, i18n: permission.i18n })).toBe('访问网络：example.com');
+    expect(localize({ text: permission.title, i18n: permission.titleI18n })).toBe('网络（example.com）');
+    setLocale('pt-BR');
+  });
   it('publica no agente do Codex: provider codex, "aprovar um comando", sem sugestões', () => {
     const { office, registry } = setup();
     const permission_suggestions = [{ type: 'addRules', rules: [{ toolName: 'Bash' }], behavior: 'allow', destination: 'localSettings' }];

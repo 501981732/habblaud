@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
+import { setLocale } from '../../../shared/i18n';
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('zh-CN'));
 import type { RecentSession } from '../../../shared/types';
 import { dayLabel, filterSessions, formatSize, groupSessionsByDay, parseRecentSessions } from './history';
 
@@ -28,6 +32,11 @@ describe('sessões do Codex no histórico', () => {
 });
 
 describe('groupSessionsByDay', () => {
+  it('本地化今天和昨天标签', () => {
+    setLocale('zh-CN');
+    expect(dayLabel(NOW, NOW)).toBe('今天');
+    expect(dayLabel(NOW - 86_400_000, NOW)).toBe('昨天');
+  });
   it('Hoje, Ontem e datas, do dia mais recente para o mais antigo (e da mais recente para a mais antiga dentro do dia)', () => {
     const list = [
       session({ sessionId: 'a', lastAt: at(8, 9) }),

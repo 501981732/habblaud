@@ -26,6 +26,7 @@ function listableStorage(initial: Record<string, string> = {}) {
 describe('preferências', () => {
   it('usa o padrão sem armazenamento ou com JSON inválido', () => {
     expect(loadPrefs(null)).toEqual(DEFAULT_PREFS);
+    expect(DEFAULT_PREFS.locale).toBe('zh-CN');
     expect(loadPrefs(memoryStorage({ [PREFS_KEY]: '{oops' }))).toEqual(DEFAULT_PREFS);
   });
   it('valida campo a campo', () => {
@@ -38,8 +39,11 @@ describe('preferências', () => {
   });
   it('salva e carrega de volta', () => {
     const st = memoryStorage();
-    savePrefs(st, { ...DEFAULT_PREFS, bubbles: 'none', feedOpen: false });
-    expect(loadPrefs(st)).toEqual({ ...DEFAULT_PREFS, bubbles: 'none', feedOpen: false });
+    savePrefs(st, { ...DEFAULT_PREFS, locale: 'pt-BR', bubbles: 'none', feedOpen: false });
+    expect(loadPrefs(st)).toEqual({ ...DEFAULT_PREFS, locale: 'pt-BR', bubbles: 'none', feedOpen: false });
+  });
+  it('ignora códigos de idioma desconhecidos', () => {
+    expect(sanitizePrefs({ locale: 'en-US' }).locale).toBe('zh-CN');
   });
   it('não quebra quando o armazenamento lança exceção', () => {
     const broken = {

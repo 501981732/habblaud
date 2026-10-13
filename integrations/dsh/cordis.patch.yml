@@ -1,0 +1,5 @@
+# Added as the last bundle layer of a DSH profile. The row injects native host
+# services and does not replace the built-in Web UI or its approval listener.
+- insert:
+    - id: habblaud-native-bridge
+      name: habblaud-dsh-bridge

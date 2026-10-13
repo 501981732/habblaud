@@ -2,8 +2,9 @@
 // O nome fica no servidor (POST /api/rooms/rename, model/room-aliases.ts) e vale para todas as abas; vazio volta ao
 // nome da pasta. Enter salva, Esc cancela, clicar fora salva. A gaveta da sala tem também um lápis ao lado do nome.
 import { isDemoId } from '../../../shared/timeline';
+import { t } from '../../../shared/i18n';
 import type { UiContext } from './context';
-import { h, setText } from './dom';
+import { h, setRawText, setText } from './dom';
 import { isLocalHostname } from './permission';
 
 const NAME_MAX = 40;
@@ -68,7 +69,7 @@ export class RoomRenamer {
     this.roomId = roomId;
     this.original = room.name;
     this.input.value = room.name;
-    setText(this.hint, `Enter salva · Esc cancela · vazio volta a “${room.path.split(/[\\/]/).filter(Boolean).pop() ?? room.path}”`);
+    setRawText(this.hint, t('Enter salva · Esc cancela · vazio volta a “{folder}”', { folder: room.path.split(/[\\/]/).filter(Boolean).pop() ?? room.path }));
     this.hint.classList.remove('is-error');
     this.el.hidden = false;
     const w = this.el.offsetWidth || 260;

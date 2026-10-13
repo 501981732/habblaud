@@ -1,6 +1,7 @@
 // Eventos do GitHub: textos (avisos/atividades/faixas) e ciclo de vida dos efeitos das salas.
 import { describe, expect, it } from 'vitest';
 import { ALARM_MS, bannerOf, describeGitHubEvent, GITHUB_TOOL, PARTY_MS, RoomEffects } from './github';
+import { localize, setLocale } from './i18n';
 
 const T0 = 1_700_000_000_000;
 
@@ -40,7 +41,9 @@ describe('efeitos das salas', () => {
   it('festa dura PARTY_MS e some', () => {
     const fx = new RoomEffects();
     expect(fx.apply('/r', { kind: 'pr_merged', number: 3 }, T0, 'ag1')).toBe(true);
-    expect(fx.get('/r', T0)).toEqual({ kind: 'party', text: 'PR #3 mergeado!', at: T0, until: T0 + PARTY_MS, agentId: 'ag1' });
+    expect(fx.get('/r', T0)).toMatchObject({ kind: 'party', text: 'PR #3 mergeado!', i18n: { key: '{pr} mergeado!', params: { pr: 'PR #3' } }, at: T0, until: T0 + PARTY_MS, agentId: 'ag1' });
+    setLocale('zh-CN');
+    expect(localize(fx.get('/r', T0)!)).toBe('PR #3 已合并！');
     expect(fx.get('/r', T0 + PARTY_MS - 1)?.kind).toBe('party');
     expect(fx.get('/r', T0 + PARTY_MS)).toBeUndefined();
     expect(fx.prune(T0 + PARTY_MS)).toBe(true);

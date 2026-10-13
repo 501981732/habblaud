@@ -50,6 +50,8 @@ export const ERR_CODEX_SLOW = 'o Codex demorou demais com as mensagens anteriore
 export const ERR_CODEX_NOT_CONFIRMED = 'o auxiliar do Codex não confirmou a entrega';
 export const ERR_CODEX_HOME = 'a pasta da conta do Codex deste agente é desconhecida';
 export const ERR_CODEX_REFUSED = 'o codex queue não aceitou a mensagem';
+export const ERR_NATIVE_UNAVAILABLE = 'a conexão nativa do agente não está disponível';
+export const ERR_NATIVE_REFUSED = 'a sessão nativa não aceitou a mensagem';
 
 const ERROR_MAX = 300;
 const ID_MAX = 300;
@@ -71,6 +73,12 @@ export interface CodexDeliveryOptions {
   homeOf: (account: string) => string | undefined;
 }
 
+export interface NativeDeliveryOptions {
+  reachable: () => Set<string>;
+  /** Accepted by the native runtime queue, not necessarily processed by the model. */
+  run: (agent: AgentInfo, text: string, id: string) => Promise<{ ok: boolean; error?: string }>;
+}
+
 export interface MessageRegistryOptions {
   office: OfficeLike;
   /** Agente do demo (Office.demoAgent): esses só existem no snapshot. */
@@ -79,6 +87,7 @@ export interface MessageRegistryOptions {
   demoDeliver?: (agentId: string, text: string) => boolean;
   /** Mensagens aos agentes do Codex; ausente = eles não recebem. */
   codex?: CodexDeliveryOptions;
+  native?: NativeDeliveryOptions;
   now?: () => number;
   /** Intervalo do relógio interno (start). */
   tickMs?: number;
@@ -118,6 +127,7 @@ interface Entry {
   demo?: boolean;
   /** Mensagem a um agente do Codex: sai pelo entregador do Codex ('node' = o servidor rodou; 'bridge' = o auxiliar). */
   codex?: true;
+  native?: true;
   via?: 'node' | 'bridge';
   /** Falhou por falta de confirmação: uma confirmação atrasada ainda corrige a situação. */
   late?: boolean;
@@ -147,7 +157,7 @@ const isFinal = (e: Entry) => e.msg.status === 'delivered' || e.msg.status === '
 function unavailableReason(a: AgentInfo, reachable: boolean): string | undefined {
   if (a.kind !== 'main') return 'subagentes não recebem mensagens: mande para o agente principal';
   if (!present(a)) return 'o agente já saiu do escritório';
-  if (!reachable) return a.provider === 'codex' ? ERR_CODEX_UNAVAILABLE : 'a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)';
+  if (!reachable) return a.provider === 'codex' ? ERR_CODEX_UNAVAILABLE : a.provider === 'dsh' || a.provider === 'pi' ? ERR_NATIVE_UNAVAILABLE : 'a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)';
   return undefined;
 }
 
@@ -229,12 +239,15 @@ export class MessageRegistry {
     const out = new Set<string>();
     for (const id of this.seen.keys()) if (this.canMessage(id)) out.add(id);
     if (this.codexAvailable()) for (const a of this.opts.office.list()) if (a.provider === 'codex' && a.kind === 'main' && present(a)) out.add(a.id);
+    if (this.opts.native) for (const id of this.opts.native.reachable()) if (this.canMessage(id)) out.add(id);
     return out;
   }
 
   canMessage(agentId: string): boolean {
     const a = this.opts.office.get(agentId);
     if (a?.provider === 'codex') return this.codexAvailable() && present(a) && a.kind === 'main';
+    if (a?.provider === 'dsh' || a?.provider === 'pi') return present(a) && a.kind === 'main' && a.capabilities?.messages === true && this.opts.native?.reachable().has(agentId) === true;
+    if (a?.provider !== undefined && a.provider !== 'claude') return false;
     const at = this.seen.get(agentId);
     if (at === undefined || this.now() - at >= this.presenceMs) return false;
     return present(a) && a.kind === 'main';
@@ -268,9 +281,11 @@ export class MessageRegistry {
     const entry: Entry = { msg: { id, agentId, status: 'queued', createdAt: now, updatedAt: now }, text, activity: describeMessage(text) };
     if (demo) entry.demo = true;
     else if (real?.provider === 'codex') entry.codex = true;
+    else if (real?.provider === 'dsh' || real?.provider === 'pi') entry.native = true;
     this.messages.set(id, entry);
     const out = { ...entry.msg };
     if (entry.codex) this.pumpCodex();
+    if (entry.native) this.pumpNative();
     return { message: out };
   }
 
@@ -292,7 +307,7 @@ export class MessageRegistry {
     // O plugin é do Claude Code: agentes do Codex nunca recebem por aqui.
     const agent = this.opts.office
       .list()
-      .find((a) => a.kind === 'main' && a.provider !== 'codex' && a.sessionId === session && (!account || a.account === account) && present(a));
+      .find((a) => a.kind === 'main' && (a.provider === undefined || a.provider === 'claude') && a.sessionId === session && (!account || a.account === account) && present(a));
     if (!agent) return [];
 
     const now = this.now();
@@ -304,7 +319,7 @@ export class MessageRegistry {
     const out: InboxMessage[] = [];
     for (const e of this.messages.values()) {
       if (out.length >= INBOX_BATCH) break;
-      if (e.demo || e.codex || e.msg.agentId !== agent.id || e.msg.status !== 'queued') continue;
+      if (e.demo || e.codex || e.native || e.msg.agentId !== agent.id || e.msg.status !== 'queued') continue;
       this.setStatus(e, 'sent', now);
       e.session = session;
       e.sentAt = now;
@@ -325,7 +340,7 @@ export class MessageRegistry {
     const now = this.now();
     for (const x of ackResults(r)) {
       const e = this.messages.get(x.id);
-      if (!e || e.demo || e.codex || e.session !== session) continue;
+      if (!e || e.demo || e.codex || e.native || e.session !== session) continue;
       if (e.msg.status !== 'sent' && !(e.msg.status === 'failed' && e.late)) continue;
       if (x.ok) this.finish(e, 'delivered', now);
       else this.fail(e, now, x.error ?? ERR_REFUSED);
@@ -399,9 +414,9 @@ export class MessageRegistry {
       }
       if (!present(this.opts.office.get(e.msg.agentId))) this.fail(e, now, ERR_GONE);
       else if (e.msg.status === 'queued' && now - e.msg.createdAt >= this.queuedTimeoutMs) {
-        this.fail(e, now, !e.codex ? ERR_NOT_FETCHED : this.opts.codex?.run ? ERR_CODEX_SLOW : ERR_CODEX_NOT_FETCHED);
+        this.fail(e, now, e.native ? ERR_NATIVE_UNAVAILABLE : !e.codex ? ERR_NOT_FETCHED : this.opts.codex?.run ? ERR_CODEX_SLOW : ERR_CODEX_NOT_FETCHED);
       } else if (e.msg.status === 'sent' && now - (e.sentAt ?? now) >= this.sentTimeoutMs) {
-        this.fail(e, now, e.codex ? ERR_CODEX_NOT_CONFIRMED : ERR_NOT_CONFIRMED);
+        this.fail(e, now, e.native ? ERR_NATIVE_UNAVAILABLE : e.codex ? ERR_CODEX_NOT_CONFIRMED : ERR_NOT_CONFIRMED);
         e.late = true;
       }
     }
@@ -417,6 +432,7 @@ export class MessageRegistry {
       if (!this.opts.codex?.run) this.opts.office.markDirty();
     }
     this.pumpCodex();
+    this.pumpNative();
   }
 
   // ---------------------------------------------------------------- internos
@@ -469,6 +485,37 @@ export class MessageRegistry {
     this.pumpCodex();
   }
 
+  /** One in-flight command per native agent, preserving message order. */
+  private pumpNative(): void {
+    const native = this.opts.native;
+    if (!native) return;
+    const busy = new Set<string>();
+    for (const e of this.messages.values()) if (e.native && e.msg.status === 'sent') busy.add(e.msg.agentId);
+    const now = this.now();
+    for (const e of this.messages.values()) {
+      if (!e.native || e.msg.status !== 'queued' || busy.has(e.msg.agentId)) continue;
+      const agent = this.opts.office.get(e.msg.agentId);
+      if (!present(agent)) { this.fail(e, now, ERR_GONE); continue; }
+      if (!this.canMessage(agent.id)) continue;
+      busy.add(agent.id);
+      this.setStatus(e, 'sent', now);
+      e.sentAt = now;
+      Promise.resolve().then(() => native.run(agent, e.text, e.msg.id)).then(
+        (r) => this.nativeDone(e, r),
+        (err: unknown) => this.nativeDone(e, { ok: false, error: errMsg(err) }),
+      );
+    }
+  }
+
+  private nativeDone(e: Entry, result: { ok: boolean; error?: string }): void {
+    if (this.messages.get(e.msg.id) !== e) return;
+    if (e.msg.status !== 'sent' && !(e.msg.status === 'failed' && e.late)) return;
+    const now = this.now();
+    if (result.ok) this.finish(e, 'delivered', now);
+    else this.fail(e, now, truncate(result.error ?? '', ERROR_MAX) || ERR_NATIVE_REFUSED);
+    this.pumpNative();
+  }
+
   private setStatus(e: Entry, status: OutboxMessage['status'], now: number): void {
     e.msg.status = status;
     e.msg.updatedAt = now;
@@ -481,7 +528,7 @@ export class MessageRegistry {
     if (status === 'delivered') {
       delete e.msg.error;
       // A do demo vai para o agente fictício (Office.deliverDemoMessage).
-      if (!e.demo) this.opts.office.addActivity(e.msg.agentId, { id: `${e.msg.agentId}#msg:${e.msg.id}`, at: now, ...e.activity }, false);
+      if (!e.demo) this.opts.office.addActivity(e.msg.agentId, { id: `${e.msg.agentId}#msg:${e.msg.id}`, at: now, ...e.activity, i18n: { key: 'Mensagem pelo Habblaud' } }, false);
     }
     e.text = '';
   }

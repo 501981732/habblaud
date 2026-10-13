@@ -35,6 +35,11 @@ import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
 import { createBuildReader } from './build';
 import { UpdateChecker } from './updates/checker';
+import { ensureBridgeConfig } from './bridge/config';
+import { NativeBridgeHttpController } from './bridge/http';
+import { NativeSource } from './bridge/source';
+import { PiHistory, piHistoryRoots } from './bridge/pi-history';
+import type { NativeProvider } from '../shared/native-bridge';
 
 const config = loadConfig();
 const startedAt = Date.now();
@@ -96,6 +101,13 @@ const agents = new SourceSet([claude]);
 const codexDirs = config.codex ? discoverCodexDirs(process.env, config.home) : [];
 const codex = codexDirs.length ? new CodexSource({ accounts, office, dirs: codexDirs, env: process.env, home: config.home }) : undefined;
 if (codex) agents.add(codex);
+const nativeSources = new Map<NativeProvider, NativeSource>();
+for (const provider of ['dsh', 'pi'] as const) {
+  if (!config[provider]) continue;
+  const source = new NativeSource({ provider, office, accounts, dir: join(config.dataDir, 'native', provider), home: config.home });
+  nativeSources.set(provider, source);
+  agents.add(source);
+}
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
@@ -108,13 +120,19 @@ stats.load();
 // Terminal: só existe com bind local (ver terminalOffReason em config.ts).
 // Cada agente com o parser da ferramenta dele (o do Claude Code por padrão).
 const terminals = config.terminal
-  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id) })
+  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id), conversationOf: (id) => agents.conversationFor(id) })
   : undefined;
 // Histórico do terminal (sessões recentes, abertas ou encerradas, de todas as ferramentas): mesma trava.
 const history = config.terminal
   ? new HistorySet([new SessionHistory({ accounts: () => accounts.entries(), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) })])
   : undefined;
 if (history && codex) history.add(new CodexHistory({ accounts: () => accounts.entriesOf('codex'), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) }));
+if (history) {
+  const dsh = nativeSources.get('dsh');
+  const pi = nativeSources.get('pi');
+  if (dsh) history.add(dsh);
+  if (pi) history.add(new PiHistory({ source: pi, roots: piHistoryRoots(process.env, config.home) }));
+}
 // Linha do tempo do timelapse: grava cada snapshot novo (com throttle) em <dataDir>/timeline.
 const timelineDir = join(config.dataDir, TIMELINE_DIR);
 const timeline = config.timeline ? new TimelineRecorder({ dir: timelineDir }) : undefined;
@@ -133,6 +151,12 @@ const permissions = config.terminal
     })
   : undefined;
 late.permissions = permissions;
+const bridgeConfig = config.terminal && permissions && nativeSources.size
+  ? ensureBridgeConfig(config.dataDir, `http://${config.inDocker ? '127.0.0.1' : config.host === '::1' ? '[::1]' : config.host}:${config.port}`)
+  : undefined;
+const nativeBridge = bridgeConfig && permissions
+  ? new NativeBridgeHttpController({ sources: nativeSources, permissions, viewers: () => hub.localSize, messaging: config.messages, token: bridgeConfig.token })
+  : undefined;
 // Mensagens pelo escritório (plugin habblaud-mensagens): entram na sessão como se você as tivesse digitado, então
 // seguem a mesma trava (e HABBLAUD_MENSAGENS=0 desliga só elas). Ao Codex vão por `codex queue` (messages/codex.ts):
 // fora do Docker o próprio servidor roda o comando (HABBLAUD_CODEX_BIN ou `codex` do PATH); no Docker, o auxiliar do
@@ -147,6 +171,7 @@ const messages = config.messages
         run: codexBin ? createCodexQueueRunner(codexBin) : undefined,
         homeOf: (account) => accounts.entriesOf('codex').find((e) => e.id === account)?.detected.configDir,
       },
+      native: nativeBridge,
     })
   : undefined;
 late.messages = messages;
@@ -193,6 +218,7 @@ const api = createApiHandler({
   permissions: permissions ? createPermissionRoutes(permissions) : undefined,
   messages: messages ? createMessageRoutes(messages) : undefined,
   codexLive,
+  nativeBridge,
   stats,
   updates,
 });
@@ -308,6 +334,7 @@ function shutdown(signal: string): void {
   terminals?.stop();
   timeline?.stop();
   permissions?.stop();
+  nativeBridge?.stop();
   messages?.stop();
   updates.stop();
   names.flush();

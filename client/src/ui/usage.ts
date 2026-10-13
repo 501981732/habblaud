@@ -8,11 +8,12 @@
 // a idade ("há 12 min") fica sempre à mostra. Sem cota nem créditos ("sem cota") nunca vira 0%. Não há o que
 // instalar para o uso: "Como funciona" abre a ajuda na seção do Codex. Sem Opus/Sonnet nem e-mail (só o plano).
 import type { AccountInfo } from '../../../shared/types';
+import { t } from '../../../shared/i18n';
 import type { UiContext } from './context';
-import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
+import { h, KeyedList, richProductText, setAttr, setHidden, setRawText, setStyleVar, setText, setTitle, setVariant } from './dom';
 import { FIVE_HOURS_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
 import { ICONS } from './icons';
-import { isCodex } from './provider';
+import { isCodex, providerName, providerOf } from './provider';
 import { createAccountChip, createProviderTag, updateAccountChip, updateProviderTag } from './widgets';
 
 export const SOURCE_LABEL: Record<NonNullable<AccountInfo['usage']>['source'], string> = {
@@ -45,7 +46,7 @@ export const USAGE_SETUP_STEPS: readonly [string, string][] = [
 
 /** Texto com trechos `assim` como código. */
 export function richText(text: string): Node[] {
-  return text.split('`').map((part, i) => (i % 2 ? h('code', { class: 'ui-usage-setup__inline', text: part }) : document.createTextNode(part)));
+  return [richProductText(text)];
 }
 
 interface Meter {
@@ -108,9 +109,10 @@ function updateMeter(m: Meter, view: UsageWindowView | null, windowName: string)
     setText(m.pct, '—');
     setText(m.resetLong, view?.renewed ? '↻ renovada' : '');
     setText(m.resetShort, '');
-    const text = view ? `${windowName}: ${view.summary}` : `${windowName}: sem dados`;
+    const localizedWindow = t(windowName);
+    const text = view ? t('{window}: {summary}', { window: localizedWindow, summary: view.summary }) : t('{window}: sem dados', { window: localizedWindow });
     setAttr(m.el, 'aria-label', text);
-    setTitle(m.el, view?.renewed ? `${windowName}: a janela já renovou depois da última leitura; o uso atual é desconhecido.` : text);
+    setTitle(m.el, view?.renewed ? t('{window}: a janela já renovou depois da última leitura; o uso atual é desconhecido.', { window: localizedWindow }) : text);
     return;
   }
   const p = view.pct;
@@ -121,8 +123,9 @@ function updateMeter(m: Meter, view: UsageWindowView | null, windowName: string)
   setText(m.pct, `${p}%`);
   setText(m.resetLong, view.reset ? `↻ ${view.reset}` : '');
   setText(m.resetShort, view.resetShort ? `↻${view.resetShort}` : '');
-  setAttr(m.el, 'aria-label', `${windowName}: ${view.summary}`);
-  setTitle(m.el, `${windowName}: ${view.summary}`);
+  const localizedWindow = t(windowName);
+  setAttr(m.el, 'aria-label', t('{window}: {summary}', { window: localizedWindow, summary: view.summary }));
+  setTitle(m.el, t('{window}: {summary}', { window: localizedWindow, summary: view.summary }));
 }
 
 function syncRows(dl: HTMLElement, rows: [string, string][]): void {
@@ -175,7 +178,8 @@ export function showsUsageAge(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'pr
 /** Linha embaixo do nome: e-mail; no Codex (sem e-mail), o plano; nas outras, a pasta. */
 export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'>): string {
   if (a.email) return a.email;
-  if (isCodex(a)) return a.plan ? `plano ${a.plan}` : 'Codex';
+  if (isCodex(a)) return a.plan ? t('plano {plan}', { plan: a.plan }) : 'Codex';
+  if (a.provider === 'dsh' || a.provider === 'pi') return providerName(a.provider);
   return a.configDir;
 }
 
@@ -192,11 +196,11 @@ export function codexUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'p
   if (!isCodex(a)) return '';
   const u = a.usage;
   const state = cardState(a);
-  if (state === 'empty') return 'Não precisa instalar nada: os números chegam com a próxima sessão do Codex.';
+  if (state === 'empty') return t('Não precisa instalar nada: os números chegam com a próxima sessão do Codex.');
   const age = u ? relativeTime(u.fetchedAt, now) : '';
   if (state === 'noquota')
-    return `Na última leitura (${age}), a conta estava sem cota nem créditos para usar (ex.: os créditos do workspace acabaram). Não é 0%: o Codex não informou as janelas. Os números voltam com a próxima sessão.`;
-  return `O Codex só grava o uso enquanto alguma sessão roda: estes números são da última leitura (${age}).`;
+    return t('Na última leitura ({age}), a conta estava sem cota nem créditos para usar (ex.: os créditos do workspace acabaram). Não é 0%: o Codex não informou as janelas. Os números voltam com a próxima sessão.', { age });
+  return t('O Codex só grava o uso enquanto alguma sessão roda: estes números são da última leitura ({age}).', { age });
 }
 
 export class UsageCards {
@@ -296,10 +300,10 @@ export class UsageCards {
     const codex = isCodex(a);
     updateAccountChip(r.chip, a);
     setStyleVar(card, '--acc', a.color);
-    setText(r.name, a.name);
-    updateProviderTag(r.prov, codex ? 'codex' : 'claude', a.name);
+    setRawText(r.name, a.name);
+    updateProviderTag(r.prov, providerOf(a), a.name);
     setText(r.email, usageSubtitle(a));
-    setAttr(card, 'aria-label', `${a.name}${codex ? ' (Codex)' : ''}: uso do plano`);
+    setAttr(card, 'aria-label', t('{name}{provider}: uso do plano', { name: a.name, provider: codex ? ' (Codex)' : '' }));
 
     const usage = a.usage;
     const state = cardState(a);
@@ -327,8 +331,8 @@ export class UsageCards {
       setTitle(
         r.state,
         codex
-          ? `Atualizado ${age}: o Codex só grava o uso enquanto alguma sessão roda.`
-          : `Números de ${age}: podem não refletir o uso atual.`,
+          ? t('Atualizado {age}: o Codex só grava o uso enquanto alguma sessão roda.', { age })
+          : t('Números de {age}: podem não refletir o uso atual.', { age }),
       );
     }
 
@@ -338,7 +342,7 @@ export class UsageCards {
     setText(r.msgLong, msgLong);
     setText(r.msgShort, msgShort);
     setHidden(r.msg, state !== 'empty' && state !== 'noquota');
-    setHidden(r.how, state === 'noquota');
+    setHidden(r.how, state === 'noquota' || a.provider === 'dsh' || a.provider === 'pi');
     r.msg.classList.toggle('is-noquota', state === 'noquota');
     setTitle(r.msg, state === 'noquota' ? codexUsageNote(a, now) : '');
     setText(r.howLong, codex ? 'Como funciona' : 'Como ativar');
@@ -350,9 +354,10 @@ export class UsageCards {
 
   private updateTip(r: CardRefs, a: AccountInfo, state: CardState, five: UsageWindowView | null, week: UsageWindowView | null, now: number): void {
     const codex = isCodex(a);
-    setText(r.tipTitle, `${a.name}${codex && !/codex/i.test(a.name) ? ' · Codex' : ''}${a.plan ? ` · plano ${a.plan}` : ''}`);
+    const native = a.provider === 'dsh' || a.provider === 'pi';
+    setRawText(r.tipTitle, `${a.name}${codex && !/codex/i.test(a.name) ? ' · Codex' : ''}${a.plan ? ` · ${t('plano')} ${a.plan}` : ''}`);
     const rows: [string, string][] = [];
-    if (codex) rows.push(['Ferramenta', 'Codex']);
+    if (providerOf(a) !== 'claude') rows.push(['Ferramenta', providerName(providerOf(a))]);
     if (a.email) rows.push(['E-mail', a.email]);
     if (a.organization) rows.push(['Organização', a.organization]);
     if (a.plan) rows.push(['Plano', a.plan]);
@@ -371,13 +376,13 @@ export class UsageCards {
     if (u && state === 'noquota') rows.push(['Cota', 'sem cota nem créditos agora']);
     if (u && (state !== 'empty' || codex)) {
       rows.push(['Origem', sourceLabel(u)]);
-      rows.push(['Atualizado', relativeTime(u.fetchedAt, now)]);
+      rows.push(['Última atualização', relativeTime(u.fetchedAt, now)]);
     }
     syncRows(r.tipRows, rows);
 
     // Codex: a explicação dele, sem o passo a passo do Claude Code (não há o que instalar para o uso).
-    if (codex) {
-      const note = codexUsageNote(a, now);
+    if (codex || native) {
+      const note = native ? t('Este Agent ainda não fornece limites de uso ao Habblaud.') : codexUsageNote(a, now);
       setText(r.tipNote, note);
       setHidden(r.tipNote, !note);
       setHidden(r.tipSetup, true);
@@ -386,7 +391,7 @@ export class UsageCards {
 
     let note = '';
     if (state === 'empty')
-      note = u ? `A última leitura (${sourceLabel(u)}, ${relativeTime(u.fetchedAt, now)}) não trouxe números de 5 h nem da semana.` : 'Ainda não há números de uso para esta conta.';
+      note = u ? t('A última leitura ({source}, {age}) não trouxe números de 5 h nem da semana.', { source: t(sourceLabel(u)), age: relativeTime(u.fetchedAt, now) }) : 'Ainda não há números de uso para esta conta.';
     else if (state === 'stale') note = 'Números antigos: refletem a última leitura, não o uso de agora.';
     else if (u?.source === 'cache') note = 'Cache do /usage: atualiza quando alguém roda /usage nesta conta.';
     else if (five?.renewed || week?.renewed) note = 'Uma das janelas já reiniciou depois da última leitura.';

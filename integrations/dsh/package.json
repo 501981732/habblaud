@@ -1,0 +1,21 @@
+{
+  "name": "habblaud-dsh-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local native Cordis bridge from DeepSeek Harness to Habblaud",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  },
+  "files": ["dist", "cordis.patch.yml", "README.md"],
+  "peerDependencies": {
+    "@deepseek-ai/dsh": "0.2.0-rc.2",
+    "@deepseek-ai/cordis": "~4.0.4"
+  }
+}

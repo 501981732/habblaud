@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../../../shared/i18n';
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('zh-CN'));
 import type { AccountInfo } from '../../../shared/types';
 import { cardState, codexUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
 
@@ -48,5 +51,11 @@ describe('cartão de uso de uma conta do Codex', () => {
     expect(usageSubtitle({ email: 'a@b.c', configDir: '~/.claude' })).toBe('a@b.c');
     expect(usageSubtitle({ configDir: '~/.claude' })).toBe('~/.claude');
     expect(codexUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
+  });
+
+  it('用中文显示 Codex 用量说明，保留相对时间插值', () => {
+    setLocale('zh-CN');
+    const fresh = { source: 'codex' as const, fiveHour: win, fetchedAt: 0 };
+    expect(codexUsageNote(codex({ usage: fresh }), 12 * MIN)).toBe('Codex 仅在会话运行时记录用量；数据上次读取于 12 分钟前。');
   });
 });

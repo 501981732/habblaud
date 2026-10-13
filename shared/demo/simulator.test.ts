@@ -4,6 +4,7 @@ import { DemoSimulator } from './simulator';
 describe('DemoSimulator', () => {
   it('no ?mock=1 imita as contas C e D (e a do Codex, por último)', () => {
     const sim = new DemoSimulator({ seed: 1 }, 1_000);
+    expect(sim.snapshot(1_000).agents[0].title).toMatch(/[\u4e00-\u9fff]/);
     expect(sim.snapshot(1_000).accounts.map((a) => [a.id, a.short, a.provider])).toEqual([
       ['.claude', 'C', undefined],
       ['.claude-conta2', 'D', undefined],

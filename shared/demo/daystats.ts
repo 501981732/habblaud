@@ -11,7 +11,7 @@ import { DEMO_PROJECT_NAMES } from './simulator';
 /** Intensidade do trabalho por hora local (0 = parado, 1 = pico). */
 const PROFILE = [0.03, 0.01, 0, 0, 0, 0, 0.02, 0.1, 0.4, 0.75, 0.95, 0.85, 0.4, 0.55, 0.9, 1, 0.95, 0.8, 0.55, 0.35, 0.3, 0.25, 0.15, 0.06];
 
-const REASONS = ['aprovar uma permissão', 'responder uma pergunta', 'escolher uma opção', 'aprovar o plano'];
+const REASONS = ['批准权限', '回答问题', '选择选项', '批准计划'];
 
 interface FakeRoom {
   id: string;
@@ -146,7 +146,7 @@ export function seedDemoHistory(book: StatsBook, view: StatsView, now: number, t
             account: room.account,
             start: Math.round(start),
             end: Math.round(start + dur),
-            reason: room.codex ? 'aprovar um comando' : reason,
+            reason: room.codex ? '批准命令' : reason,
           });
         }
         wall += waiting * between(0.75, 0.95);

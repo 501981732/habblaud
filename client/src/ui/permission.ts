@@ -8,8 +8,9 @@
 // motivo. O Codex nunca pergunta pelo escritório (sem cartão de pergunta).
 import { ANSWER_OTHER_MAX, ASK_TOOL, checkAnswers } from '../../../shared/answers';
 import type { AgentInfo, AskQuestion, PermissionAnswer, PermissionDecision, PermissionRequestInfo, PermissionSuggestionInfo } from '../../../shared/types';
+import { localize, t } from '../../../shared/i18n';
 import type { UiContext } from './context';
-import { h, KeyedList, setAttr, setHidden, setText, setTitle } from './dom';
+import { h, KeyedList, setAttr, setHidden, setRawText, setText, setTitle } from './dom';
 import { formatClock, formatDuration } from './format';
 import { ICONS } from './icons';
 import { diffLineKind, moreLabel, previewText, showToolInput, splitToolTitle } from './terminal';
@@ -37,9 +38,9 @@ export function destinationLabel(destination: string): string {
  */
 export function expiryText(expiresAt: number, now: number, seconds = false): string {
   const left = expiresAt - now;
-  if (left <= 0) return 'voltando ao terminal…';
-  if (left < 60_000) return seconds ? `volta ao terminal em ${Math.ceil(left / 1_000)} s` : 'volta ao terminal em menos de 1 min';
-  return `volta ao terminal em ${formatDuration(left)}`;
+  if (left <= 0) return t('voltando ao terminal…');
+  if (left < 60_000) return seconds ? t('volta ao terminal em {n} s', { n: Math.ceil(left / 1_000) }) : t('volta ao terminal em menos de 1 min');
+  return t('volta ao terminal em {duration}', { duration: formatDuration(left) });
 }
 
 /** Aviso do cartão de um pedido do Codex. */
@@ -334,11 +335,11 @@ export class PermissionCard {
     if (this.el.dataset.kind !== kind) {
       this.el.dataset.kind = kind;
       this.icon.innerHTML = ask ? ICONS.help : ICONS.lock;
-      setAttr(this.el, 'aria-label', ask ? 'Pergunta do agente' : 'Pedido de permissão');
+      setAttr(this.el, 'aria-label', t(ask ? 'Pergunta do agente' : 'Pedido de permissão'));
     }
     setText(this.title, ask ? (p.questions!.length > 1 ? 'Perguntas para você' : 'Pergunta para você') : 'Pede permissão');
-    const by = p.subagent ? ` · subagente ${p.subagent}` : '';
-    setText(this.what, ask ? `Aqui ou no terminal: vale a primeira resposta${by}` :`${p.icon} ${p.text}${by}`);
+    const by = p.subagent ? t(' · subagente {name}', { name: p.subagent }) : '';
+    setRawText(this.what, ask ? t('Aqui ou no terminal: vale a primeira resposta{by}', { by }) : p.i18n ? `${p.icon} ${localize({ text: p.text, i18n: p.i18n })}${by}` : `${p.icon} ${p.text}${by}`);
     setText(this.timer, expiryText(p.expiresAt, now, opts.seconds));
     setTitle(
       this.timer,
@@ -358,7 +359,7 @@ export class PermissionCard {
       const shown = commandPreview(full) ? '' : args;
       if (this.tool.dataset.title !== `${p.title}|${shown}`) {
         this.tool.dataset.title = `${p.title}|${shown}`;
-        this.tool.replaceChildren(h('strong', { text: name }), shown ? document.createTextNode(shown) : '');
+        this.tool.replaceChildren(h('strong', { text: name, rawText: true }), shown ? document.createTextNode(shown) : '');
       }
       setTitle(this.tool, p.title);
       if (this.preview.dataset.id !== `${p.id}:${full ? 'full' : 'short'}`) {
@@ -472,7 +473,7 @@ export class PermissionCard {
     if (error) {
       this.phase = 'idle';
       this.status.classList.add('is-error');
-      setText(this.status, error);
+      setRawText(this.status, error);
     } else {
       this.phase = 'sent';
       const done = DONE[d.behavior];
@@ -512,6 +513,7 @@ export class PermissionCard {
     const text = h('input', {
       class: 'ui-perm-ask__text',
       type: 'text',
+      rawAttrs: ['aria-label'],
       attrs: { maxlength: ANSWER_OTHER_MAX, placeholder: 'Escreva a sua resposta', autocomplete: 'off', 'aria-label': `Outra resposta para: ${q.question}` },
     });
     text.addEventListener('input', () => {
@@ -532,7 +534,7 @@ export class PermissionCard {
     const el = h(
       'fieldset',
       { class: 'ui-perm-ask__q' },
-      h('legend', { class: 'ui-perm-ask__legend' }, q.header ? h('span', { class: 'ui-ask__tag', text: q.header }) : null, h('span', { class: 'ui-ask__question', text: q.question })),
+      h('legend', { class: 'ui-perm-ask__legend' }, q.header ? h('span', { class: 'ui-ask__tag', text: q.header, rawText: true }) : null, h('span', { class: 'ui-ask__question', text: q.question, rawText: true })),
       h('p', { class: 'ui-ask__hint', text: q.multiSelect ? 'Pode escolher mais de uma' : 'Escolha uma' }),
       ...options.map(({ input: box, o }) => h('label', { class: 'ui-perm-ask__opt' }, box, optionText(o.label, o.description))),
       h('div', { class: 'ui-perm-ask__other' }, h('label', { class: 'ui-perm-ask__opt' }, other, optionText('Outro')), text),

@@ -13,7 +13,8 @@ import {
   type TimedStatus,
   type WaitDayStats,
 } from '../../../shared/daystats';
-import { formatInt, formatTokens, formatUSD } from './format';
+import { formatInt, formatTokens, formatUSD, plural } from './format';
+import { getLocale, t as translate } from '../../../shared/i18n';
 
 /** Rótulos dos status no painel (o mesmo vocabulário do escritório, do ponto de vista de quem espera). */
 export const STATUS_TEXT: Record<TimedStatus, string> = {
@@ -29,11 +30,11 @@ export const STATUS_TEXT: Record<TimedStatus, string> = {
  */
 export function formatAgentTime(ms: number): string {
   const v = Number.isFinite(ms) ? Math.max(0, ms) : 0;
-  if (v < 60_000) return `${Math.floor(v / 1_000)} s`;
-  if (v < 3_600_000) return `${Math.floor(v / 60_000)} min`;
+  if (v < 60_000) return translate('{n} s', { n: Math.floor(v / 1_000) });
+  if (v < 3_600_000) return translate('{n} min', { n: Math.floor(v / 60_000) });
   const h = Math.floor(v / 3_600_000);
   const m = Math.floor((v % 3_600_000) / 60_000);
-  return m ? `${h} h ${m} min` : `${h} h`;
+  return m ? translate('{h} h {m} min', { h, m }) : translate('{h} h', { h });
 }
 
 /** Statuses visíveis (a legenda liga e desliga cada um), sempre na ordem de empilhamento. */
@@ -60,8 +61,8 @@ export function segments(ms: StatusMs, visible: Visible, scale: number): Segment
 
 /** Frase com cada status (para leitores de tela e tabelas): "esperando você 12 min, trabalhando 1 h 5 min". */
 export function statusSummary(ms: StatusMs, visible: Visible = ALL_VISIBLE): string {
-  const parts = TIMED_STATUSES.filter((s) => visible.has(s) && ms[s] > 0).map((s) => `${STATUS_TEXT[s].toLowerCase()} ${formatAgentTime(ms[s])}`);
-  return parts.length ? parts.join(', ') : 'sem tempo registrado';
+  const parts = TIMED_STATUSES.filter((s) => visible.has(s) && ms[s] > 0).map((s) => translate('{status} {time}', { status: translate(STATUS_TEXT[s].toLowerCase()), time: formatAgentTime(ms[s]) }));
+  return parts.length ? parts.join(getLocale() === 'zh-CN' ? '、' : ', ') : translate('sem tempo registrado');
 }
 
 // ---------------------------------------------------------------- destaques
@@ -95,29 +96,28 @@ export function highlights(stats: DayStats, clock: (t: number) => string, codex 
   const t = stats.totals;
   const c = t.counts;
   const top = stats.waits[0];
-  const plural = (n: number, one: string, many: string) => `${formatInt(n)} ${n === 1 ? one : many}`;
   return {
     waiting: formatAgentTime(t.ms.waiting),
     waitingMs: t.ms.waiting,
-    longest: top ? `${formatAgentTime(top.ms)} · ${top.agentName} em ${top.roomName}, às ${clock(top.start)}${top.ongoing ? ' (ainda esperando)' : ''}` : '',
-    wall: t.waitWallMs > 0 ? `Alguém esperou por você durante ${formatAgentTime(t.waitWallMs)} do dia` : '',
-    waits: t.waits ? plural(t.waits, 'espera', 'esperas') : t.ms.waiting > 0 ? 'só esperas de poucos segundos' : 'nenhuma espera',
+    longest: top ? translate('{duration} · {agent} em {room}, às {time}{ongoing}', { duration: formatAgentTime(top.ms), agent: top.agentName, room: top.roomName, time: clock(top.start), ongoing: top.ongoing ? translate(' (ainda esperando)') : '' }) : '',
+    wall: t.waitWallMs > 0 ? translate('Alguém esperou por você durante {duration} do dia', { duration: formatAgentTime(t.waitWallMs) }) : '',
+    waits: t.waits ? plural(t.waits, 'espera', 'esperas') : t.ms.waiting > 0 ? translate('só esperas de poucos segundos') : translate('nenhuma espera'),
     working: formatAgentTime(t.ms.working),
     sessions: formatInt(t.sessions),
     subagents: plural(t.subagents, 'subagente', 'subagentes'),
     tokens: formatTokens(c.tokensIn + c.tokensOut),
-    tokensDetail: `${formatTokens(c.tokensIn)} entrada · ${formatTokens(c.tokensOut)} saída`,
+    tokensDetail: translate('{in} entrada · {out} saída', { in: formatTokens(c.tokensIn), out: formatTokens(c.tokensOut) }),
     cost: c.costUSD > 0 ? formatUSD(c.costUSD) : '—',
     costHint:
       c.costUSD > 0
         ? codex
-          ? 'Só do Claude Code: o Codex não grava custo, só tokens'
-          : 'Custo calculado pelo próprio Claude Code'
+          ? translate('Só do Claude Code: o Codex não grava custo, só tokens')
+          : translate('Custo calculado pelo próprio Claude Code')
         : c.tokensIn + c.tokensOut > 0
           ? codex
-            ? 'O Codex não grava custo, só tokens'
-            : 'Os transcripts não trouxeram o custo'
-          : 'Nenhum gasto registrado',
+            ? translate('O Codex não grava custo, só tokens')
+            : translate('Os transcripts não trouxeram o custo')
+          : translate('Nenhum gasto registrado'),
     prompts: formatInt(c.prompts),
     activity: `${plural(c.toolCalls, 'ferramenta', 'ferramentas')} · ${plural(c.tasksDone, 'tarefa concluída', 'tarefas concluídas')}`,
   };
@@ -151,9 +151,9 @@ export function roomRows(rooms: readonly RoomDayStats[], visible: Visible): Room
         ms: r.ms,
         total,
         segments: segments(r.ms, visible, scale),
-        waiting: `${formatAgentTime(r.ms.waiting)} esperando você`,
-        totalText: `${formatAgentTime(total)} no total`,
-        label: `${r.name}: ${statusSummary(r.ms, visible)}`,
+        waiting: translate('{duration} esperando você', { duration: formatAgentTime(r.ms.waiting) }),
+        totalText: translate('{duration} no total', { duration: formatAgentTime(total) }),
+        label: translate('{name}: {summary}', { name: r.name, summary: statusSummary(r.ms, visible) }),
       };
     });
 }
@@ -190,10 +190,10 @@ export function niceAxis(value: number): AxisScale {
 /** Rótulo curto de uma marca do eixo: "30 min", "1 h", "1 h 30", "2 h". */
 export function axisLabel(ms: number): string {
   const min = Math.round(ms / 60_000);
-  if (min < 60) return `${min} min`;
+  if (min < 60) return translate('{n} min', { n: min });
   const h = Math.floor(min / 60);
   const m = min % 60;
-  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
+  return m ? translate('{h} h {m}', { h, m: String(m).padStart(2, '0') }) : translate('{h} h', { h });
 }
 
 export interface HourColumn {
@@ -218,7 +218,7 @@ export function hourColumns(hours: readonly HourDayStats[], visible: Visible, no
   const columns = hours.map((h, i) => {
     const total = visibleTotal(h.ms, visible);
     const next = (h.hour + 1) % 24;
-    const range = `${h.hour}h–${next}h`;
+    const range = getLocale() === 'zh-CN' ? `${String(h.hour).padStart(2, '0')}:00–${String(next).padStart(2, '0')}:00` : `${h.hour}h–${next}h`;
     return {
       t: h.t,
       hour: h.hour,
@@ -226,7 +226,7 @@ export function hourColumns(hours: readonly HourDayStats[], visible: Visible, no
       total,
       segments: segments(h.ms, visible, axis.max),
       range,
-      label: `${range}: ${statusSummary(h.ms, visible)}`,
+      label: translate('{range}: {summary}', { range, summary: statusSummary(h.ms, visible) }),
       now: now >= h.t && now < (hours[i + 1]?.t ?? h.t + 3_600_000),
       future: h.t > now,
       tick: h.hour % every === 0,
@@ -269,10 +269,10 @@ export function accountCards(accounts: readonly AccountDayStats[], isCodex: (id:
         short: a.short,
         color: a.color,
         share,
-        shareText: `${share}% do trabalho do dia`,
+        shareText: translate('{pct}% do trabalho do dia', { pct: share }),
         working: formatAgentTime(a.ms.working),
         waiting: formatAgentTime(a.ms.waiting),
-        sessions: `${formatInt(a.sessions)} ${a.sessions === 1 ? 'sessão' : 'sessões'}${a.subagents ? ` · ${formatInt(a.subagents)} sub` : ''}`,
+        sessions: `${plural(a.sessions, 'sessão', 'sessões')}${a.subagents ? ` · ${getLocale() === 'zh-CN' ? plural(a.subagents, 'subagente', 'subagentes') : `${formatInt(a.subagents)} sub`}` : ''}`,
         tokens: formatTokens(a.counts.tokensIn + a.counts.tokensOut),
         cost: codex ? null : a.counts.costUSD > 0 ? formatUSD(a.counts.costUSD) : '—',
         codex,
@@ -301,7 +301,7 @@ export interface WaitRow {
 export function waitRows(waits: readonly WaitDayStats[], clock: (t: number) => string): WaitRow[] {
   const longest = Math.max(1, ...waits.map((w) => w.ms));
   return waits.map((w, i) => {
-    const when = w.ongoing ? `desde ${clock(w.start)}` : `${clock(w.start)}–${clock(w.end)}`;
+    const when = w.ongoing ? translate('desde {time}', { time: clock(w.start) }) : `${clock(w.start)}–${clock(w.end)}`;
     const row: WaitRow = {
       key: `${w.agentId}|${w.start}`,
       rank: i + 1,
@@ -312,7 +312,7 @@ export function waitRows(waits: readonly WaitDayStats[], clock: (t: number) => s
       account: w.account,
       when,
       ongoing: !!w.ongoing,
-      label: `${i + 1}º: ${formatAgentTime(w.ms)}, ${w.agentName} em ${w.roomName}, ${when}${w.reason ? `, para ${w.reason}` : ''}${w.ongoing ? ', ainda esperando' : ''}`,
+      label: translate('{rank}º: {duration}, {agent} em {room}, {when}{reason}{ongoing}', { rank: i + 1, duration: formatAgentTime(w.ms), agent: w.agentName, room: w.roomName, when, reason: w.reason ? translate(', para {reason}', { reason: w.reason }) : '', ongoing: w.ongoing ? translate(', ainda esperando') : '' }),
     };
     if (w.reason) row.reason = w.reason;
     return row;
@@ -332,16 +332,16 @@ export function statusTable<T extends { ms: StatusMs }>(items: readonly T[], nam
 
 // ---------------------------------------------------------------- dias, URLs e atualização
 
-const weekdayFmt = new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+const weekdayFmt = () => new Intl.DateTimeFormat(getLocale(), { weekday: 'short', day: '2-digit', month: '2-digit', timeZone: 'UTC' });
 
 /** "Hoje", "Ontem" ou "qui., 01/10" (a data de "AAAA-MM-DD", sem depender do fuso). */
 export function dayLabel(day: string, today: string): string {
-  if (day === today) return 'Hoje';
+  if (day === today) return translate('Hoje');
   const [y, m, d] = day.split('-').map(Number);
   const t = Date.UTC(y, m - 1, d);
   const [ty, tm, td] = today.split('-').map(Number);
-  if (Date.UTC(ty, tm - 1, td) - t === 86_400_000) return 'Ontem';
-  return weekdayFmt.format(t);
+  if (Date.UTC(ty, tm - 1, td) - t === 86_400_000) return translate('Ontem');
+  return weekdayFmt().format(t);
 }
 
 export function statsUrl(day: string, tz: string, source?: StatsSource): string {

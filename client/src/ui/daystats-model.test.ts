@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../../../shared/i18n';
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('zh-CN'));
 import type { AccountDayStats, DayStats, HourDayStats, RoomDayStats, StatusMs, WaitDayStats } from '../../../shared/daystats';
 import {
   accountCards,

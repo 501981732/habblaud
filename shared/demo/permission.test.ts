@@ -6,6 +6,12 @@ import { DEMO_CODEX_PERMISSION_MS, demoCodexPermission, demoPermission } from '.
 import { DemoSimulator } from './simulator';
 
 describe('demoPermission', () => {
+  it('演示问题正文和选项是中文样例，产品摘要带翻译引用', () => {
+    const p = demoPermission('zh-question', { files: [], commands: [] }, mulberry32(1), 1_000, 'question');
+    expect(p.questions?.[0].question).toMatch(/[\u4e00-\u9fff]/);
+    expect(p.questions?.[0].options[0].description).toMatch(/[\u4e00-\u9fff]/);
+    expect(p.i18n).toEqual({ key: 'Fazendo uma pergunta a você' });
+  });
   it('monta pedidos completos (título, resumo, argumentos) com prazo', () => {
     const kinds = new Set<string>();
     for (let seed = 1; seed < 60; seed++) {

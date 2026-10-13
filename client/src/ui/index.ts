@@ -9,11 +9,12 @@ import '@fontsource/pixelify-sans/700.css';
 import './styles.css';
 
 import type { OfficeStore } from '../net/store';
+import { onLocaleChange, setLocale } from '../../../shared/i18n';
 import type { Selection, WorldApi } from '../world/api';
 import type { PanelName, UiComponent, UiContext } from './context';
 import { DayLauncher } from './daystats-launcher';
 import { RoomRenamer } from './roomrename';
-import { h } from './dom';
+import { h, refreshLocalizableDom } from './dom';
 import { Drawer } from './drawer';
 import { FeedPanel } from './feed';
 import { HelpDialog } from './help';
@@ -50,6 +51,8 @@ function isTypingTarget(t: EventTarget | null): boolean {
 export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi): void {
   const storage = safeLocalStorage();
   let prefs: UiPrefs = loadPrefs(storage);
+  setLocale(prefs.locale);
+  document.documentElement.lang = prefs.locale;
   let selection: Selection = world.getSelection();
   let skew = 0;
   const narrowMq = typeof matchMedia === 'function' ? matchMedia(NARROW_QUERY) : null;
@@ -80,6 +83,10 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
     updatePrefs(patch) {
       prefs = { ...prefs, ...patch };
       savePrefs(storage, prefs);
+      if (patch.locale) {
+        setLocale(prefs.locale);
+        document.documentElement.lang = prefs.locale;
+      }
       world.setOptions(worldOptionsFrom(prefs));
       invalidate();
     },
@@ -184,6 +191,11 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   drawer.onLayoutChange = () => applyLayout();
 
   const components: UiComponent[] = [topbar, sidebar, drawer, terminal, history, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
+  onLocaleChange(() => {
+    refreshLocalizableDom(root);
+    terminal.refreshLocale();
+    invalidate();
+  });
 
   // ---------------------------------------------------------------- renderização agrupada por quadro
   let rafId = 0;

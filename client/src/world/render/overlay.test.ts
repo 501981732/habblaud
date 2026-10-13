@@ -1,5 +1,8 @@
 // Regras puras da camada de texto do mundo (balões e enquadramento).
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../../../../shared/i18n';
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('zh-CN'));
 import { overviewFrame } from '../camera';
 import { rationBubbles, waitBubbleText } from './overlay';
 

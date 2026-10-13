@@ -17,8 +17,10 @@
 // terminal só pede a aprovação depois que o hook termina, então ela nunca é respondida lá enquanto ele espera).
 import { randomBytes } from 'node:crypto';
 import { describeTool, maskSecrets, truncate } from '../../shared/activity';
+import { productCopy } from '../../shared/copy';
 import { ANSWER_OTHER_MAX, answerSummary, ASK_TOOL, checkAnswers } from '../../shared/answers';
-import type { Activity, AgentInfo, PermissionAnswer, PermissionDecision, PermissionRequestInfo, PermissionSuggestionInfo } from '../../shared/types';
+import type { BridgePermission } from '../../shared/native-bridge';
+import type { Activity, AgentInfo, MessageRef, PermissionAnswer, PermissionDecision, PermissionRequestInfo, PermissionSuggestionInfo } from '../../shared/types';
 import { errMsg, log } from '../log';
 import { toolView } from '../sources/terminal';
 import { codexToolView } from './codex';
@@ -56,7 +58,7 @@ export interface OfficeLike {
   markDirty(): void;
   addActivity(id: string, activity: Activity, current: boolean, opts?: { feed?: boolean }): void;
   /** Aviso "pede permissão" ou "tem uma pergunta" (mesmo dedupe do aviso "precisa de você" do status). */
-  noticePermission(id: string, what: string, kind?: 'permission' | 'question'): void;
+  noticePermission(id: string, what: string, kind?: 'permission' | 'question', whatI18n?: MessageRef): void;
 }
 
 export interface RegistryOptions {
@@ -84,7 +86,7 @@ export interface RegistryOptions {
 
 export type SkipReason = 'no-viewers' | 'unknown-session' | 'unsupported-tool' | 'too-many';
 export type RegisterResult = { id: string; expiresAt: number } | { skip: SkipReason };
-export type ReleaseReason = 'terminal' | 'answered' | 'expired' | 'orphan' | 'gone' | 'shutdown';
+export type ReleaseReason = 'terminal' | 'answered' | 'expired' | 'orphan' | 'gone' | 'shutdown' | 'no-viewers' | 'cancelled';
 
 /**
  * Resposta de uma espera do hook. `answer`: as respostas por posição (o hook as troca pelos textos originais
@@ -123,6 +125,7 @@ interface Pending {
   info: PermissionRequestInfo;
   /** Pedido do Codex (sem a busca da resposta no transcript). */
   codex?: boolean;
+  native?: boolean;
   /** Pergunta (AskUserQuestion): o formato de `tool_input.questions`, por posição (undefined = entrada inválida). */
   askFormat?: Array<AskFormat | undefined>;
   agentId: string;
@@ -159,12 +162,17 @@ function isIndex(v: unknown): v is number {
 
 /** Pedido que se responde com `answer` (as perguntas do AskUserQuestion; o Codex não as manda pelo hook). */
 function isQuestion(info: { tool: string; provider?: string }): boolean {
-  return info.tool === ASK_TOOL && info.provider !== 'codex';
+  return info.tool === ASK_TOOL && (info.provider === undefined || info.provider === 'claude');
 }
 
 /** O Codex não aceita interromper nem "sempre permitir" (o hook dele só aprova ou recusa com motivo). */
 function unsupportedByCodex(info: PermissionRequestInfo, d: PermissionDecision): boolean {
   return info.provider === 'codex' && (d.interrupt === true || d.suggestion !== undefined);
+}
+
+function unsupportedByNative(info: PermissionRequestInfo, d: PermissionDecision): boolean {
+  return (info.provider === 'dsh' || info.provider === 'pi') &&
+    (d.behavior === 'answer' || d.interrupt === true || d.suggestion !== undefined);
 }
 
 /**
@@ -272,6 +280,7 @@ export function parseHookInput(raw: unknown): {
   const tool = shortStr(r?.tool_name, 200);
   if (!r || !sessionId || !tool) throw new InvalidRequest('esperado o JSON do hook PermissionRequest (session_id e tool_name)');
   const t = typeof r.timeout_ms === 'number' && Number.isFinite(r.timeout_ms) ? r.timeout_ms : DEFAULT_TIMEOUT_MS;
+  if (r.provider !== undefined && r.provider !== 'claude' && r.provider !== 'codex') throw new InvalidRequest('provider de hook desconhecido');
   const codex = r.provider === 'codex';
   return {
     ...(codex ? { provider: 'codex' as const, account: shortStr(r.account, 200), codexHome: shortStr(r.codexHome, 4_096) } : {}),
@@ -400,6 +409,8 @@ export class PermissionRegistry {
     // Codex: título, resumo e argumentos pelos nomes de ferramenta dele (permissions/codex.ts).
     const view = 'title' in desc ? desc : toolView(req.tool, req.input, req.cwd);
     const info: PermissionRequestInfo = { id, tool: req.tool, title: view.title, text: desc.text, icon: desc.icon, createdAt: now, expiresAt: now + req.timeoutMs };
+    if (desc.i18n) info.i18n = desc.i18n;
+    if (view.titleI18n) info.titleI18n = view.titleI18n;
     if (codex) info.provider = 'codex';
     if (view.input) info.input = view.input;
     if (view.inputKind) info.inputKind = view.inputKind;
@@ -426,14 +437,62 @@ export class PermissionRegistry {
     const first = info.questions?.[0]?.question;
     if (first) {
       const all = info.questions!.map((q) => q.question).join(' · ');
-      this.opts.office.addActivity(target.id, { id: `${target.id}#perm:${id}`, at: now, kind: 'wait', icon: '❓', text: truncate(`Pergunta: ${first}`, 46), detail: truncate(all, 300), tool: 'PermissionRequest' }, false);
+      this.opts.office.addActivity(target.id, { id: `${target.id}#perm:${id}`, at: now, kind: 'wait', icon: '❓', text: truncate(`Pergunta: ${first}`, 46), i18n: { key: 'Pergunta: {question}', params: { question: first } }, detail: truncate(all, 300), tool: 'PermissionRequest' }, false);
       this.opts.office.noticePermission(target.id, `${truncate(first, 120)}${by}`, 'question');
     } else {
-      this.opts.office.addActivity(target.id, { id: `${target.id}#perm:${id}`, at: now, kind: 'wait', icon: '🔐', text: truncate(`Pede permissão: ${desc.text}`, 46), detail: view.title, tool: 'PermissionRequest' }, false);
-      this.opts.office.noticePermission(target.id, `${desc.text}${by}`);
+      this.opts.office.addActivity(target.id, { id: `${target.id}#perm:${id}`, at: now, kind: 'wait', icon: '🔐', text: truncate(`Pede permissão: ${desc.text}`, 46), i18n: desc.i18n ? productCopy('Pede permissão').i18n : productCopy('Pede permissão: {tool}', { tool: desc.text }).i18n, detail: view.title, ...(view.titleI18n ? { detailI18n: view.titleI18n } : {}), tool: 'PermissionRequest' }, false);
+      this.opts.office.noticePermission(target.id, `${desc.text}${by}`, 'permission', desc.i18n);
     }
     this.opts.office.markDirty();
     return { id, expiresAt: info.expiresAt + EXPIRY_GRACE_MS };
+  }
+
+  /** Authenticated native bridge entry. The agent id must resolve to this exact live native session. */
+  registerNative(agentId: string, request: BridgePermission): RegisterResult {
+    if (this.opts.viewers() <= 0) return { skip: 'no-viewers' };
+    const agent = this.opts.office.get(agentId);
+    if (!present(agent) || (agent.provider !== 'dsh' && agent.provider !== 'pi') ||
+      agent.capabilities?.permissions !== true || agent.sessionId !== request.sessionId) return { skip: 'unknown-session' };
+    if (this.size >= this.maxPending) return { skip: 'too-many' };
+    const tool = shortStr(request.tool, 200);
+    if (!tool) return { skip: 'unsupported-tool' };
+
+    const input = rec(request.input) ?? (request.reason ? { reason: request.reason } : {});
+    const view = codexToolView(tool, input);
+    const now = this.now();
+    const timeout = typeof request.timeoutMs === 'number' && Number.isFinite(request.timeoutMs)
+      ? Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, request.timeoutMs)) : DEFAULT_TIMEOUT_MS;
+    const id = `p-${now.toString(36)}-${++this.seq}-${randomBytes(9).toString('base64url')}`;
+    const info: PermissionRequestInfo = {
+      id, provider: agent.provider, tool, title: view.title, text: view.text, icon: view.icon,
+      createdAt: now, expiresAt: now + timeout,
+    };
+    if (view.i18n) info.i18n = view.i18n;
+    if (view.titleI18n) info.titleI18n = view.titleI18n;
+    if (view.input) info.input = view.input;
+    if (view.inputKind) info.inputKind = view.inputKind;
+    const p: Pending = {
+      info, native: true, agentId, sessionId: request.sessionId, signature: '', lastScanAt: 0,
+      waiters: new Set(), idleSince: now,
+    };
+    this.pending.set(id, p);
+    this.opts.office.addActivity(agentId, {
+      id: `${agentId}#perm:${id}`, at: now, kind: 'wait', icon: '🔐',
+      text: truncate(`Pede permissão: ${view.text}`, 46),
+      i18n: view.i18n ? productCopy('Pede permissão').i18n : productCopy('Pede permissão: {tool}', { tool: view.text }).i18n,
+      detail: view.title, ...(view.titleI18n ? { detailI18n: view.titleI18n } : {}), tool: 'PermissionRequest',
+    }, false);
+    this.opts.office.noticePermission(agentId, view.text, 'permission', view.i18n);
+    this.opts.office.markDirty();
+    return { id, expiresAt: info.expiresAt + EXPIRY_GRACE_MS };
+  }
+
+  /** Abort/disconnect of a native approval: release to its runtime's original UI once. */
+  releaseNative(id: string): boolean {
+    const p = this.pending.get(id);
+    if (!p?.native || p.outcome) return false;
+    this.release(p, 'cancelled');
+    return true;
   }
 
   /** Detalhe completo de um pedido em aberto (com os argumentos), ou undefined. */
@@ -484,7 +543,7 @@ export class PermissionRegistry {
       waiter = { done, timer };
       p.waiters.add(waiter);
     });
-    return { result, cancel: () => waiter && this.dropWaiter(p, waiter) };
+    return { result, cancel: () => waiter && this.dropWaiter(p, waiter, { status: 'pending' }) };
   }
 
   /** Decisão da página. Pedido do demo vai para `demoDecide` (com as mesmas regras para as perguntas). */
@@ -492,12 +551,12 @@ export class PermissionRegistry {
     const p = this.pending.get(id);
     if (!p) {
       const demo = this.opts.demoDetail?.(id);
-      if (demo && unsupportedByCodex(demo, d)) return 'unsupported';
+      if (demo && (unsupportedByCodex(demo, d) || unsupportedByNative(demo, d))) return 'unsupported';
       if (demo && (wrongKind(demo, d) || (d.behavior === 'answer' && !checkAnswers(demo.questions ?? [], d.answers)))) return 'invalid-answer';
       return this.opts.demoDecide?.(id, d) ? 'ok' : 'not-found';
     }
     if (p.outcome) return 'conflict';
-    if (unsupportedByCodex(p.info, d)) return 'unsupported';
+    if (unsupportedByCodex(p.info, d) || unsupportedByNative(p.info, d)) return 'unsupported';
     if (d.suggestion !== undefined && !p.info.suggestions?.some((s) => s.index === d.suggestion)) return 'invalid';
     if (d.behavior === 'terminal') {
       this.release(p, 'terminal');
@@ -513,8 +572,8 @@ export class PermissionRegistry {
     const now = this.now();
     const act: Activity =
       d.behavior === 'allow'
-        ? { id: `${p.agentId}#perm-ok:${id}`, at: now, kind: 'other', icon: '✅', text: d.suggestion !== undefined ? 'Aprovado no Habblaud (sempre permitir)' : 'Aprovado no Habblaud', detail: p.info.title, tool: 'PermissionRequest' }
-        : { id: `${p.agentId}#perm-no:${id}`, at: now, kind: 'wait', icon: '🚫', text: 'Recusado no Habblaud', detail: d.message ? `${p.info.title} — ${d.message}` : p.info.title, tool: 'PermissionRequest' };
+        ? { id: `${p.agentId}#perm-ok:${id}`, at: now, kind: 'other', icon: '✅', text: d.suggestion !== undefined ? 'Aprovado no Habblaud (sempre permitir)' : 'Aprovado no Habblaud', i18n: { key: d.suggestion !== undefined ? 'Aprovado no Habblaud (sempre permitir)' : 'Aprovado no Habblaud' }, detail: p.info.title, ...(p.info.titleI18n ? { detailI18n: p.info.titleI18n } : {}), tool: 'PermissionRequest' }
+        : { id: `${p.agentId}#perm-no:${id}`, at: now, kind: 'wait', icon: '🚫', text: 'Recusado no Habblaud', i18n: { key: 'Recusado no Habblaud' }, detail: d.message ? `${p.info.title} — ${d.message}` : p.info.title, ...(p.info.titleI18n ? { detailI18n: d.message ? productCopy('Motivo: {motivo}', { motivo: d.message }).i18n : p.info.titleI18n } : {}), tool: 'PermissionRequest' };
     this.opts.office.addActivity(p.agentId, act, false);
     return 'ok';
   }
@@ -528,7 +587,7 @@ export class PermissionRegistry {
     const answers = checkAnswers(questions, raw);
     if (!answers || answers.some((a) => !fitsFormat(p.askFormat?.[a.question], a))) return 'invalid-answer';
     this.resolve(p, { status: 'decided', behavior: 'answer', answers });
-    const act: Activity = { id: `${p.agentId}#perm-answer:${p.info.id}`, at: this.now(), kind: 'other', icon: '💬', text: 'Respondido no Habblaud', detail: answerSummary(questions, answers), tool: 'PermissionRequest' };
+    const act: Activity = { id: `${p.agentId}#perm-answer:${p.info.id}`, at: this.now(), kind: 'other', icon: '💬', text: 'Respondido no Habblaud', i18n: { key: 'Respondido no Habblaud' }, detail: answerSummary(questions, answers), tool: 'PermissionRequest' };
     this.opts.office.addActivity(p.agentId, act, false);
     return 'ok';
   }
@@ -542,10 +601,12 @@ export class PermissionRegistry {
         continue;
       }
       if (now >= p.info.expiresAt + EXPIRY_GRACE_MS) this.release(p, 'expired');
+      else if (p.native && this.opts.viewers() <= 0) this.release(p, 'no-viewers');
       else if (!p.waiters.size && now - p.idleSince >= this.orphanMs) this.release(p, 'orphan');
       else if (!present(this.opts.office.get(p.agentId))) this.release(p, 'gone');
+      else if (p.native && !this.nativeAgentMatches(p)) this.release(p, 'gone');
       // No Codex o terminal só pede a aprovação depois que o hook termina: não há resposta dada lá para procurar.
-      else if (p.codex) continue;
+      else if (p.codex || p.native) continue;
       else if (now - p.lastScanAt >= SCAN_EVERY_MS && this.answeredInTerminal(p, now)) this.release(p, 'answered');
       else if (this.leftWaiting(p, now)) this.release(p, 'answered');
     }
@@ -558,12 +619,18 @@ export class PermissionRegistry {
     if (agentId) {
       const subId = `${sessionId}:${agentId}`;
       const sub = office.get(subId);
-      if (present(sub) && sub.provider !== 'codex') return { id: subId };
+      if (present(sub) && (sub.provider === undefined || sub.provider === 'claude')) return { id: subId };
     }
-    const main = office.list().find((a) => a.kind === 'main' && a.provider !== 'codex' && a.sessionId === sessionId && a.status !== 'offline');
+    const main = office.list().find((a) => a.kind === 'main' && (a.provider === undefined || a.provider === 'claude') && a.sessionId === sessionId && present(a));
     if (!main) return undefined;
     return agentId ? { id: main.id, subagent: agentType ?? 'subagente' } : { id: main.id };
   }
+
+  private nativeAgentMatches(p: Pending): boolean {
+    const a = this.opts.office.get(p.agentId);
+    return present(a) && (a.provider === 'dsh' || a.provider === 'pi') && a.capabilities?.permissions === true && a.sessionId === p.sessionId;
+  }
+
 
   /**
    * Agente do Codex de um pedido: o do thread `agent_id ?? session_id` (o subagente tem thread próprio; o principal é o

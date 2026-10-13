@@ -2,6 +2,7 @@
 // quina redimensiona (e também solta); duplo clique na barra devolve ao lugar. Posição e tamanho ficam no navegador
 // (localStorage, por painel). Em telas estreitas os painéis continuam fixos.
 import { ICONS } from './icons';
+import { t } from '../../../shared/i18n';
 
 const DRAG_THRESHOLD = 4;
 /** Quanto da janela precisa continuar visível na tela. */
@@ -262,8 +263,10 @@ export function maximizeButton(get: () => Movable | undefined, onToggle?: () => 
     const max = !!get()?.maximized;
     b.innerHTML = max ? ICONS.restore : ICONS.maximize;
     const label = max ? 'Restaurar o tamanho' : 'Expandir na tela toda';
-    b.title = label;
-    b.setAttribute('aria-label', label);
+    b.dataset.i18nTitle = label;
+    b.dataset.i18nAriaLabel = label;
+    b.title = t(label);
+    b.setAttribute('aria-label', t(label));
     b.setAttribute('aria-pressed', String(max));
   };
   b.addEventListener('click', () => {

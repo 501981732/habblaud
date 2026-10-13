@@ -126,20 +126,20 @@ describe('demoTerminalEntries', () => {
     expect(result(9).text).toContain('built in');
     expect(tool(10)).toMatchObject({ tool: 'WebSearch', title: 'WebSearch(react checkout form validation)' });
     expect(tool(11)).toMatchObject({ tool: 'WebFetch', title: 'WebFetch(https://developer.mozilla.org/pt-BR/docs/Web)' });
-    expect(tool(12)).toMatchObject({ tool: 'TodoWrite', title: 'TodoWrite(1/3 concluídas)' });
+    expect(tool(12)).toMatchObject({ tool: 'TodoWrite', title: 'TodoWrite(1/3 已完成)' });
     expect(tool(12).input).toBe('☒ Criar página de checkout\n◐ Validar formulário de endereço\n☐ Escrever testes do carrinho');
     expect(tool(13)).toMatchObject({ tool: 'Agent', title: 'Agent(general-purpose: 3 frentes em paralelo)' });
     expect(kinds(14)).toEqual(['thinking']);
-    expect(system(15)).toMatchObject({ text: 'Aguardando você: aprovar uma permissão', level: 'warn' });
+    expect(system(15)).toMatchObject({ text: '等待你的操作：批准权限', level: 'warn' });
     // Shell em segundo plano: lançamento, espera e fim (ok e falha).
-    expect(result(16).text).toMatch(/segundo plano/);
+    expect(result(16).text).toMatch(/后台运行/);
     expect(groups[17]).toEqual([expect.objectContaining({ kind: 'assistant' })]);
-    expect(system(18)).toMatchObject({ text: 'Tarefa em segundo plano concluída: npm test -- --runInBand (1min 35s)', level: 'info' });
-    expect(system(19)).toMatchObject({ text: 'Tarefa em segundo plano falhou: npm run build -- --mode production', level: 'warn' });
+    expect(system(18)).toMatchObject({ text: '后台任务完成：npm test -- --runInBand (1min 35s)', level: 'info' });
+    expect(system(19)).toMatchObject({ text: '后台任务失败：npm run build -- --mode production', level: 'warn' });
     // Fim do turno: resumo do assistant e a duração.
     expect(kinds(20)).toEqual(['assistant', 'system']);
-    expect(system(20).text).toBe('Turno concluído em 2min 10s');
-    expect(system(21).text).toBe('Conversa compactada automaticamente');
+    expect(system(20).text).toBe('本轮完成，用时 2min 10s');
+    expect(system(21).text).toBe('对话已自动压缩');
     expect(system(22)).toMatchObject({ text: 'Erro em Bash', level: 'error', detail: 'Exit code 1' });
     expect(tool(23)).toMatchObject({ tool: 'SendMessage' });
   });
@@ -217,9 +217,9 @@ describe('demoTerminalEntries: agente do Codex', () => {
     expect(result(7).text).toMatch(/✓ \d+ testes passaram/);
     expect(tool(10)).toMatchObject({ tool: 'web_search', title: 'web_search(react checkout form validation)' });
     expect(tool(11).title).toMatch(/^Shell\(curl -sL https:\/\/developer\.mozilla\.org/);
-    expect(tool(12)).toMatchObject({ tool: 'update_plan', title: 'update_plan(1/3 concluídas)' });
+    expect(tool(12)).toMatchObject({ tool: 'update_plan', title: 'update_plan(1/3 已完成)' });
     expect(tool(13)).toMatchObject({ tool: 'spawn_agent', title: 'spawn_agent(worker: 3 frentes em paralelo)' });
-    expect(result(16).text).toMatch(/segundo plano/);
+    expect(result(16).text).toMatch(/后台运行/);
     // Nada do jeito do Claude Code.
     expect(e.some((x) => x.kind === 'tool' && ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'Bash', 'TodoWrite', 'Agent', 'WebSearch', 'WebFetch'].includes(x.tool))).toBe(false);
   });

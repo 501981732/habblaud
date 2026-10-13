@@ -16,6 +16,7 @@ import type { Provider, RecentSession, SourceInfo } from '../../shared/types';
 import { errMsg, log } from '../log';
 import { HISTORY_LIMIT } from './history';
 import { createTerminalParser, type TerminalParser } from './terminal';
+import type { ConversationSource } from '../http/terminal';
 
 /** Uma fonte de agentes: observa as sessões abertas de uma ferramenta e alimenta o Office. */
 export interface AgentSource {
@@ -35,6 +36,7 @@ export interface AgentSource {
    * Ausente, ou undefined, = o do Claude Code (createTerminalParser).
    */
   terminalParser?(agentId: string): TerminalParser | undefined;
+  conversation?(agentId: string): ConversationSource | undefined;
 }
 
 /** Todas as fontes de agentes ligadas, vistas como uma só. */
@@ -109,6 +111,14 @@ export class SourceSet {
     const owner = this.list.find((s) => s.transcriptPathOf(agentId) !== undefined);
     return owner?.terminalParser?.(agentId) ?? createTerminalParser();
   }
+
+  conversationFor(agentId: string): ConversationSource | undefined {
+    for (const source of this.list) {
+      const found = source.conversation?.(agentId);
+      if (found) return found;
+    }
+    return undefined;
+  }
 }
 
 // ------------------------------------------------------------------ histórico do terminal
@@ -118,6 +128,7 @@ export interface HistorySession {
   path: string;
   /** Parser NOVO a cada chamada (o terminal cria outro quando o arquivo é truncado ou substituído). */
   createParser: () => TerminalParser;
+  createConversation?: (streamId: string) => ConversationSource;
 }
 
 /** Resultado de resolve(): a sessão ou o erro HTTP. */

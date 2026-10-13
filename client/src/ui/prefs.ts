@@ -3,10 +3,12 @@
 import { DEFAULT_SOUND_SETTINGS, sanitizeSoundSettings, type SoundSettings } from '../audio/scheduler';
 import type { DaylightMode, WorldOptions } from '../world/api';
 import { DEFAULT_WORLD_OPTIONS } from '../world/api';
+import type { Locale } from '../../../shared/i18n';
 
 export const PREFS_KEY = 'habblaud:prefs';
 
 export interface UiPrefs {
+  locale: Locale;
   showNames: boolean;
   bubbles: WorldOptions['bubbles'];
   liveliness: WorldOptions['liveliness'];
@@ -25,6 +27,7 @@ export interface UiPrefs {
 }
 
 export const DEFAULT_PREFS: UiPrefs = {
+  locale: 'zh-CN',
   showNames: DEFAULT_WORLD_OPTIONS.showNames,
   bubbles: DEFAULT_WORLD_OPTIONS.bubbles,
   liveliness: DEFAULT_WORLD_OPTIONS.liveliness,
@@ -48,6 +51,7 @@ export function sanitizePrefs(raw: unknown): UiPrefs {
   const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const d = DEFAULT_PREFS;
   return {
+    locale: oneOf(o.locale, ['zh-CN', 'pt-BR'] as const, d.locale),
     showNames: bool(o.showNames, d.showNames),
     bubbles: oneOf(o.bubbles, ['all', 'important', 'none'] as const, d.bubbles),
     liveliness: oneOf(o.liveliness, ['calm', 'normal', 'lively'] as const, d.liveliness),

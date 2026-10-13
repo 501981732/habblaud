@@ -1,5 +1,8 @@
 // Regras puras da espera de shell: estágios da escalada, giros, bocejos, teia, balão e modos.
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../../../../shared/i18n';
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('zh-CN'));
 import type { ShellJob } from '../../../../shared/types';
 import { modeFor, shouldRun } from './behavior';
 import {
@@ -190,6 +193,11 @@ describe('fim do shell', () => {
 });
 
 describe('balão da espera', () => {
+  it('本地化 shell 等待时长', () => {
+    setLocale('zh-CN');
+    expect(formatShellAge(45_000)).toBe('45 秒');
+    expect(formatShellAge(3 * 60_000)).toBe('3 分钟');
+  });
   it('tempo em PT-BR: "45 s", "3 min", "1 h 05"', () => {
     expect(formatShellAge(-500)).toBe('0 s');
     expect(formatShellAge(45_400)).toBe('45 s');
