@@ -141,14 +141,18 @@ npm run codex:status
 
 DSH 需要原生插件：它从 DSH 进程读取状态和解码后的历史，以原生会话控制器投递消息，并在有本地网页时处理实时审批。DSH 原有 Web UI 继续存在；桥断开或无人打开 Habblaud 页面时，审批回到 DSH Web UI。
 
-先启动上面的 Habblaud Node 服务，再在仓库目录安装插件。以下是常见的 `web` profile：
+启动上文的 Habblaud Node 服务，打开看板，点击顶部的**连接 DSH**，或进入**设置 → Agent 连接**。Habblaud 会检测本机 DSH，自动安装并启用所选配置中的桥接；有多个配置时，先在设置里选择一个。不需要再敲桥接安装命令，也不需要去 DSH 单独打开插件开关。
+
+页面会区分**桥接已启用**和**DSH 已连接**。安装后打开 DSH 即可；如果 DSH 已经运行但尚未加载桥接，请等当前任务结束后重启一次。以后启动 DSH 时会自动加载桥接，Habblaud 重启后也会自动重连。按钮不会重启正在工作的 DSH。
+
+命令行安装或自定义目录仍可使用以下方式，示例为常见的 `web` 配置：
 
 ```bash
 npm run dsh:install -- --profile web
 npm run dsh:status -- --profile web
 ```
 
-安装器把本地构建的插件通过 DSH 官方 `dsh plugin` 命令加入 profile，备份可能改动的清单文件；重复安装同一来源不会覆盖其他插件。若 `dsh` 不在 `PATH`，加 `--dsh /绝对路径/dsh`；另一个 DSH_HOME 用 `--dsh-home /目录`。已有进程可能热重载，以 `dsh:status` 和办公室实际会话为准。DSH 的模型、认证和工作目录仍由 DSH 管理。
+安装器通过 DSH 官方 `dsh plugin` 命令加入本地构建的插件，并备份会改动的配置文件。页面按钮也会重新启用已关闭的桥接，保留其他插件和设置。若 `dsh` 不在 `PATH` 或本机 npm 缓存中，在启动 Habblaud 前设置 `HABBLAUD_DSH_BIN=/绝对路径/dsh`；命令行安装可加 `--dsh /绝对路径/dsh`，另一个 DSH_HOME 用 `--dsh-home /目录`。DSH 的模型、认证和工作目录仍由 DSH 管理。一键连接要求在本机使用 Node 模式；Docker、关闭 DSH 来源或关闭本地终端时不可用。
 
 Habblaud 为插件生成私有的本机桥接配置，默认在 `~/.habblaud/bridge.json`。**不要提交该文件或在问题报告中粘贴其内容。** 若使用独立数据目录或多个 Habblaud 实例，给服务器与 DSH 进程设置相同的 `HABBLAUD_BRIDGE_CONFIG=/绝对路径/bridge.json`。移除插件见 `npm run dsh:uninstall -- --profile web` 与 [DSH 说明](integrations/dsh/README.md)。
 

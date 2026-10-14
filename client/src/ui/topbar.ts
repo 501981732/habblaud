@@ -10,6 +10,7 @@ import { focusPermission, nextPermissionAgent, permissionAgents } from './permis
 import { UsageCards } from './usage';
 import { VersionChip } from './version';
 import { wordmark } from './widgets';
+import { DshConnectButton, type DshSetupController } from './dsh-setup';
 
 interface CounterRefs {
   el: HTMLElement;
@@ -38,6 +39,7 @@ export class TopBar implements UiComponent {
   private shellCursor = 0;
   private usage: UsageCards;
   private version: VersionChip;
+  private dsh: DshConnectButton;
   private hadOpen = false;
   private sidebarBtn: HTMLButtonElement;
   private feedBtn: HTMLButtonElement;
@@ -46,7 +48,7 @@ export class TopBar implements UiComponent {
   /** Grupo dos botões de painéis (feed, configurações, ajuda); o histórico entra aqui (ui/index.ts). */
   readonly panelGroup: HTMLElement;
 
-  constructor(private ctx: UiContext) {
+  constructor(private ctx: UiContext, dshSetup: DshSetupController) {
     // Marca: usa o logo do projeto se existir; senão, o prédio em pixels.
     const mark = h('span', { class: 'ui-brand__mark' });
     const logo = h('img', { attrs: { src: '/assets/brand/logo-mark.png', srcset: '/assets/brand/logo-mark@4x.png 4x', alt: '', width: 32, height: 32, draggable: 'false' } });
@@ -100,6 +102,7 @@ export class TopBar implements UiComponent {
     this.settingsBtn = iconButton(ICONS.settings, 'Configurações', () => ctx.toggleSettings());
     this.settingsBtn.setAttribute('aria-haspopup', 'dialog');
     this.version = new VersionChip(ctx, this.settingsBtn);
+    this.dsh = new DshConnectButton(ctx, dshSetup);
     const viewGroup = h(
       'div',
       { class: 'ui-btn-group', role: 'group', attrs: { 'aria-label': 'Câmera' } },
@@ -133,7 +136,7 @@ export class TopBar implements UiComponent {
       ),
       counterWrap,
       this.usage.el,
-      h('div', { class: 'ui-topbar__right' }, viewGroup, panelGroup),
+      h('div', { class: 'ui-topbar__right' }, this.dsh.el, viewGroup, panelGroup),
     );
   }
 
@@ -188,6 +191,7 @@ export class TopBar implements UiComponent {
 
     this.usage.render();
     this.version.render();
+    this.dsh.render();
 
     this.sidebarBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('sidebar')));
     this.feedBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('feed')));

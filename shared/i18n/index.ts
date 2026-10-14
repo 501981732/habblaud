@@ -1,4 +1,5 @@
 import { serverMessages } from './server';
+import { dshSetupMessages } from './dsh-setup';
 export { serverMessages };
 
 export type Locale = 'zh-CN' | 'pt-BR';
@@ -13,6 +14,7 @@ const listeners = new Set<(value: Locale) => void>();
 
 /** Exact product-copy translations. Protocol values and user supplied text are deliberately absent. */
 export const messages: Readonly<Record<string, string>> = {
+  ...dshSetupMessages,
   'Seguir': '跟随', 'Agora': '当前活动', 'Linha do tempo': '时间线', 'Estatísticas': '统计信息',
   'Chamadas de ferramenta': '工具调用', 'Tokens de entrada': '输入 Token', 'Tokens de saída': '输出 Token',
   'Modelo': '模型', 'Permissões': '权限', 'Sessão': '会话', 'Início': '开始时间', 'Duração': '持续时间',

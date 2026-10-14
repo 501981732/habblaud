@@ -8,6 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 await Promise.all([
   ['integrations/dsh/index.ts', 'integrations/dsh/dist/index.js'],
   ['integrations/pi/extension.ts', 'integrations/pi/dist/index.js'],
+  ['scripts/dsh-install.ts', 'dist/scripts/dsh-install.js'],
 ].map(async ([entry, output]) => {
   await build({
     entryPoints: [resolve(root, entry)],

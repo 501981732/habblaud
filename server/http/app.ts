@@ -1,5 +1,6 @@
 // Rotas da API (/api/*). Respostas JSON; rotas desconhecidas -> 404 JSON.
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { DshSetupPort, DshSetupStatus } from '../../shared/dsh-setup';
 import { NAME_MAX, parseAppearanceParts, parseCharacterName, parseSeed } from '../../shared/appearance';
 import type { AgentInfo, ModSummary, OfficeSnapshot, SourceInfo, UpdateStatus } from '../../shared/types';
 import type { AccountsService } from '../accounts/service';
@@ -51,6 +52,8 @@ export interface ApiDeps {
    */
   codexLive?: CodexLive;
   nativeBridge?: NativeBridgeHttpController;
+  /** Instala e habilita a ponte DSH no computador local, por escolha explícita do usuário. */
+  dshSetup?: DshSetupPort;
   /** Renomeia a sala (POST /api/rooms/rename {id, name}; vazio volta ao padrão). Devolve o nome em uso, ou undefined se a sala não existe. */
   renameRoom?: (id: string, name: string) => string | undefined;
   /** Estatísticas do "Meu dia" (GET /api/stats, http/stats.ts). */
@@ -74,6 +77,25 @@ function isLoopbackAddress(addr: string | undefined): boolean {
   if (!addr) return false;
   const a = addr.replace(/^::ffff:/i, '');
   return a === '::1' || /^127\./.test(a);
+}
+
+/** A instalação só aceita a própria página, inclusive a mesma porta. */
+function setupOriginAllowed(req: IncomingMessage): boolean {
+  if (req.headers.origin === undefined) return true;
+  try {
+    const origin = new URL(req.headers.origin);
+    return origin.origin === new URL(`http://${req.headers.host}`).origin && req.headers.origin === origin.origin;
+  } catch {
+    return false;
+  }
+}
+
+function setupProfile(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !/^[a-z][a-z0-9_-]*$/i.test(value) || value.length > 64 || ['desktop', 'node_modules'].includes(value.toLowerCase())) {
+    throw new HttpError(400, 'invalid-profile');
+  }
+  return value;
 }
 
 /** Rotas das mensagens pelo escritório (server/messages/http.ts); /api/mod/summary fica de fora (sem trava). */
@@ -206,6 +228,16 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     sendJson(res, 200, { ok: true, demo: office.isDemo() });
   };
 
+  const handleDshConnect = async (req: IncomingMessage, res: ServerResponse) => {
+    const body = await readJson(req);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => key !== 'profile')) {
+      throw new HttpError(400, 'invalid-request');
+    }
+    const profile = setupProfile((body as { profile?: unknown }).profile);
+    const status = await deps.dshSetup!.connect(profile);
+    sendJson(res, 200, status);
+  };
+
   const handleCharacter = async (req: IncomingMessage, res: ServerResponse, id: string, method: string) => {
     if (method === 'DELETE') {
       req.resume();
@@ -236,6 +268,29 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     if (path !== '/api' && !path.startsWith('/api/')) return false;
     const method = req.method ?? 'GET';
     const isRead = method === 'GET' || method === 'HEAD';
+
+    if (path === '/api/integrations/dsh' || path === '/api/integrations/dsh/connect') {
+      const connecting = path.endsWith('/connect');
+      if (method !== (connecting ? 'POST' : 'GET')) methodNotAllowed(res, connecting ? 'POST' : 'GET');
+      else if (!isLoopbackHost(req.headers.host) || !isLoopbackAddress(req.socket.remoteAddress) || !setupOriginAllowed(req)) {
+        req.resume();
+        sendJson(res, 403, { error: 'local-access-required' });
+      } else if (!deps.terminal || deps.inDocker || !deps.dshSetup) {
+        req.resume();
+        const status: DshSetupStatus = { state: 'unavailable', profile: '', profiles: [], canConnect: false, connected: false, autostart: false, error: 'setup-disabled' };
+        sendJson(res, connecting ? 403 : 200, status);
+      } else if (connecting) {
+        void handleDshConnect(req, res).catch((err) => fail(res, err));
+      } else {
+        try {
+          if (url.searchParams.getAll('profile').length > 1) throw new HttpError(400, 'invalid-profile');
+          sendJson(res, 200, deps.dshSetup.status(setupProfile(url.searchParams.get('profile') ?? undefined)));
+        } catch (err) {
+          fail(res, err);
+        }
+      }
+      return true;
+    }
 
     if (path === '/api/stream') {
       if (method !== 'GET') methodNotAllowed(res, 'GET');
