@@ -1383,6 +1383,34 @@
   flex: none;
 }
 
+.ui-dsh-connect {
+  font-size: 11px;
+  padding: 0 8px;
+}
+
+.ui-dsh-connect__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ui-accent);
+}
+
+.ui-dsh-connect.is-connected .ui-dsh-connect__dot {
+  background: #6cdb9e;
+}
+
+.ui-dsh-connect[aria-busy='true'] .ui-dsh-connect__dot {
+  animation: ui-dsh-pulse 1s ease-in-out infinite;
+}
+
+@keyframes ui-dsh-pulse {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-dsh-connect[aria-busy='true'] .ui-dsh-connect__dot { animation: none; }
+}
+
 .ui-btn-group {
   display: inline-flex;
   align-items: center;
@@ -2708,6 +2736,30 @@
 .ui-set__hint {
   font-size: 11.5px;
   color: var(--ui-muted);
+}
+
+.ui-dsh-setup__status {
+  margin: 7px 0 10px;
+  line-height: 1.6;
+}
+
+.ui-dsh-setup.is-error .ui-dsh-setup__status {
+  color: var(--ui-warn, #f5c66c);
+}
+
+.ui-dsh-setup__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ui-dsh-setup__profile {
+  width: 100%;
+  padding: 6px 8px;
+  color: var(--ui-text);
+  background: var(--ui-bg-solid);
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--radius-sm);
 }
 
 /* Sobre: versão em uso, estado da verificação no GitHub e a versão nova (com o jeito de atualizar). */

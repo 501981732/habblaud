@@ -141,14 +141,18 @@ Approve the new hooks in Codex `/hooks`, then reopen affected sessions. The inst
 
 DSH requires a native plugin. It reads state and decoded history from the DSH process, delivers messages through the native session controller, and handles live approvals when a local Habblaud page is open. DSH's own Web UI remains available; if the bridge disconnects or no Habblaud page is open, approvals return to the DSH Web UI.
 
-Start the Habblaud Node service described above, then install the plugin from the repository directory. The following uses the common `web` profile:
+Start the Habblaud Node service described above, open the dashboard, and click **Connect DSH** in the top bar or **Settings → Integrations**. Habblaud detects the local DSH installation, installs its bridge, and enables it in the selected profile. If you have several profiles, choose one in Settings first. No bridge installation command or separate plugin switch is needed.
+
+The dashboard distinguishes **bridge enabled** from **DSH connected**. Open DSH after installation; if DSH is already running and has not loaded the bridge, let the current task finish and restart DSH once. Later launches load the bridge automatically, and it reconnects when Habblaud restarts. The button does not restart active DSH tasks.
+
+For command-line installation or custom paths, the common `web` profile can also be set up from the repository directory:
 
 ```bash
 npm run dsh:install -- --profile web
 npm run dsh:status -- --profile web
 ```
 
-The installer adds the locally built plugin to the profile using DSH's official `dsh plugin` command and backs up manifest files it may change. Reinstalling the same source does not overwrite other plugins. If `dsh` is not on `PATH`, add `--dsh /absolute/path/dsh`; use `--dsh-home /directory` for another DSH_HOME. Existing processes may hot-reload; check `dsh:status` and the sessions shown in the office. DSH continues to manage its own model, authentication, and working directory.
+The installer adds the locally built plugin using DSH's official `dsh plugin` command and backs up the profile files it changes. The dashboard button also re-enables this bridge if it was disabled, while preserving other plugins and settings. If `dsh` is not on `PATH` or in the local npm cache, set `HABBLAUD_DSH_BIN=/absolute/path/dsh` before starting Habblaud. For the CLI, use `--dsh /absolute/path/dsh` and `--dsh-home /directory` for custom locations. DSH continues to manage its own model, authentication, and working directory. One-click setup requires a local Node service; it is unavailable in Docker or when the DSH source or local terminal is disabled.
 
 Habblaud generates a private local bridge configuration for the plugin, at `~/.habblaud/bridge.json` by default. **Do not commit this file or paste its contents into an issue.** If you use a separate data directory or multiple Habblaud instances, set the same `HABBLAUD_BRIDGE_CONFIG=/absolute/path/bridge.json` for the server and DSH process. Remove the plugin with `npm run dsh:uninstall -- --profile web`. See the [DSH guide (Chinese)](integrations/dsh/README.md).
 

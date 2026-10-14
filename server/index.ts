@@ -40,6 +40,7 @@ import { NativeBridgeHttpController } from './bridge/http';
 import { NativeSource } from './bridge/source';
 import { PiHistory, piHistoryRoots } from './bridge/pi-history';
 import type { NativeProvider } from '../shared/native-bridge';
+import { DshSetupService } from './dsh/setup';
 
 const config = loadConfig();
 const startedAt = Date.now();
@@ -157,6 +158,13 @@ const bridgeConfig = config.terminal && permissions && nativeSources.size
 const nativeBridge = bridgeConfig && permissions
   ? new NativeBridgeHttpController({ sources: nativeSources, permissions, viewers: () => hub.localSize, messaging: config.messages, token: bridgeConfig.token })
   : undefined;
+const dshSetup = new DshSetupService({
+  rootDir: config.rootDir,
+  home: config.home,
+  env: process.env,
+  enabled: config.dsh && !!nativeBridge && !config.inDocker,
+  connected: () => nativeSources.get('dsh')?.sources().some((source) => source.ok) ?? false,
+});
 // Mensagens pelo escritório (plugin habblaud-mensagens): entram na sessão como se você as tivesse digitado, então
 // seguem a mesma trava (e HABBLAUD_MENSAGENS=0 desliga só elas). Ao Codex vão por `codex queue` (messages/codex.ts):
 // fora do Docker o próprio servidor roda o comando (HABBLAUD_CODEX_BIN ou `codex` do PATH); no Docker, o auxiliar do
@@ -219,6 +227,7 @@ const api = createApiHandler({
   messages: messages ? createMessageRoutes(messages) : undefined,
   codexLive,
   nativeBridge,
+  dshSetup,
   stats,
   updates,
 });

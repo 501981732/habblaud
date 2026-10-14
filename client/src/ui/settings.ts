@@ -8,6 +8,7 @@ import type { UiPrefs } from './prefs';
 import { SoundSettingsGroup } from './settings-sound';
 import type { SoundControl } from './sound';
 import { AboutGroup } from './version';
+import { DshSettingsGroup, type DshSetupController } from './dsh-setup';
 
 type BoolPref = { [K in keyof UiPrefs]: UiPrefs[K] extends boolean ? K : never }[keyof UiPrefs];
 
@@ -66,6 +67,7 @@ export class SettingsPopover implements UiComponent {
   private soundGroup: SoundSettingsGroup;
   private demoGroup: HTMLElement;
   private about: AboutGroup;
+  private dsh: DshSettingsGroup;
   private demoBusy = false;
   private anchor: HTMLElement | null = null;
 
@@ -73,6 +75,7 @@ export class SettingsPopover implements UiComponent {
     private ctx: UiContext,
     private notifier: Notifier,
     sound: SoundControl,
+    dshSetup: DshSetupController,
   ) {
     const sw = (key: BoolPref | 'demo', label: string, hint: string, onToggle: () => void) => {
       const r = switchRow(label, hint, onToggle);
@@ -120,12 +123,14 @@ export class SettingsPopover implements UiComponent {
     );
 
     this.about = new AboutGroup(ctx);
+    this.dsh = new DshSettingsGroup(ctx, dshSetup);
 
     const close = iconButton(ICONS.close, 'Fechar configurações', () => this.hide(), 'ui-icon-btn--sm');
     this.el = h(
       'div',
       { class: 'ui-popover ui-settings', role: 'dialog', tabIndex: -1, attrs: { 'aria-label': 'Configurações', id: 'ui-settings', popover: 'auto' } },
       h('div', { class: 'ui-popover__head' }, h('h2', { text: 'Configurações' }), close),
+      this.dsh.el,
       h(
         'div',
         { class: 'ui-set-group' },
@@ -182,6 +187,12 @@ export class SettingsPopover implements UiComponent {
     requestAnimationFrame(() => this.about.highlight());
   }
 
+  showDsh(anchor: HTMLElement): void {
+    if (!this.isOpen) this.toggle(anchor);
+    this.render();
+    requestAnimationFrame(() => this.dsh.highlight());
+  }
+
   hide(): void {
     if (typeof this.el.hidePopover === 'function' && this.isOpen) this.el.hidePopover();
     this.el.classList.remove('is-open');
@@ -208,6 +219,7 @@ export class SettingsPopover implements UiComponent {
     this.soundGroup.render();
     setHidden(this.demoGroup, this.ctx.store.mock);
     this.about.render();
+    this.dsh.render();
 
     const notif = this.switches.get('browserNotifications')!;
     const state = notificationState();

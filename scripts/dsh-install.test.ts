@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
-import { install, parseArgs, status, uninstall } from './dsh-install';
+import { connect, install, parseArgs, status, uninstall } from './dsh-install';
 
 const directories: string[] = [];
 afterEach(() => { for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -31,7 +31,9 @@ if (command !== 'plugin' || flag !== '--profile' || profile !== 'web' ||
   (action === 'remove' && bundle !== 'habblaud-dsh-bridge')) process.exit(19);
 const dir = path.join(process.env.DSH_HOME, 'profiles', profile);
 const file = path.join(dir, 'package.json');
-const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+fs.mkdirSync(dir, { recursive: true });
+const data = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) :
+  { dependencies: {}, dsh: { profile: { bundles: [] } } };
 if (action === 'add') {
   data.dependencies['habblaud-dsh-bridge'] = 'file:' + bundle;
   data.dsh.profile.bundles.push('habblaud-dsh-bridge');
@@ -148,4 +150,53 @@ test('refuses to replace an existing Habblaud package from a different source', 
   assert.throws(() => uninstall({ profile: 'web', dshHome: home, dshBin: bin }), /different/);
   assert.equal(existsSync(join(profileDir, 'called')), false);
   assert.equal(readdirSync(profileDir).filter((name) => name.includes('backup')).length, 0);
+});
+
+test('connect installs and enables once, then keeps unrelated profile configuration untouched', () => {
+  const { home, profileDir, bin } = fixture();
+  const opts = { profile: 'web', dshHome: home, dshBin: bin };
+  const originalPatch = readFileSync(join(profileDir, 'cordis.patch.yml'), 'utf8');
+  assert.equal(connect(opts).status.enabled, true);
+  assert.equal(readFileSync(join(profileDir, 'cordis.patch.yml'), 'utf8'), originalPatch);
+  assert.equal(connect(opts).changed, false);
+  assert.equal(JSON.parse(readFileSync(join(profileDir, 'package.json'), 'utf8')).userField.untouched, true);
+});
+
+test('connect initializes a DSH web profile that has not been started yet', () => {
+  const { home, profileDir, bin } = fixture();
+  rmSync(profileDir, { recursive: true });
+  const result = connect({ profile: 'web', dshHome: home, dshBin: bin });
+  assert.equal(result.status.enabled, true);
+  assert.equal(result.status.localSource, true);
+});
+
+test('connect re-enables only the owned bundle and component and preserves other overrides', () => {
+  const { home, profileDir, bin } = fixture();
+  const opts = { profile: 'web', dshHome: home, dshBin: bin };
+  install(opts);
+  const file = join(profileDir, 'package.json');
+  const manifest = JSON.parse(readFileSync(file, 'utf8'));
+  manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter((name: string) => name !== 'habblaud-dsh-bridge');
+  writeFileSync(file, JSON.stringify(manifest));
+  const patch = join(profileDir, 'cordis.patch.yml');
+  writeFileSync(patch, '# user comment\n- id: existing-user-override\n  disabled: true\n- id: habblaud-native-bridge\n  disabled: true\n');
+  assert.equal(status(opts).enabled, false);
+  const result = connect(opts);
+  assert.equal(result.status.enabled, true);
+  assert.equal(result.backups.length, 2);
+  assert.equal(readFileSync(patch, 'utf8').includes('# user comment'), true);
+  assert.equal(readFileSync(patch, 'utf8').includes('existing-user-override'), true);
+  assert.equal(readFileSync(patch, 'utf8').includes('disabled: false'), true);
+  assert.equal(connect(opts).changed, false);
+});
+
+test('connect refuses a different source without editing the profile', () => {
+  const { home, profileDir, bin } = fixture();
+  const file = join(profileDir, 'package.json');
+  const manifest = JSON.parse(readFileSync(file, 'utf8'));
+  manifest.dependencies['habblaud-dsh-bridge'] = 'https://example.invalid/bridge.tgz';
+  writeFileSync(file, JSON.stringify(manifest));
+  const before = readFileSync(file, 'utf8');
+  assert.throws(() => connect({ profile: 'web', dshHome: home, dshBin: bin }), /different/);
+  assert.equal(readFileSync(file, 'utf8'), before);
 });

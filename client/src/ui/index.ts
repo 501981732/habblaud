@@ -36,6 +36,7 @@ import { UpdateToaster } from './version';
 import { TopBar } from './topbar';
 import { UpdateBanner } from './update';
 import { FreeArea } from './viewport';
+import { DshSetupController } from './dsh-setup';
 
 /** Relógio dos tempos relativos ("há 5 s"). */
 const CLOCK_MS = 5_000;
@@ -154,7 +155,8 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   // ---------------------------------------------------------------- componentes
   const sound = new SoundControl(ctx);
   const notifier = new Notifier(ctx, sound.board);
-  topbar = new TopBar(ctx);
+  const dshSetup = new DshSetupController(ctx, () => settings.showDsh(topbar.settingsBtn));
+  topbar = new TopBar(ctx, dshSetup);
   sidebar = new Sidebar(ctx);
   const terminal = new TerminalPanel(ctx);
   // Histórico de sessões (terminal): botão no grupo dos painéis da barra superior.
@@ -164,7 +166,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   const feed = new FeedPanel(ctx);
   const toasts = new Toasts(ctx);
   const updateToaster = new UpdateToaster(ctx, (n) => toasts.push(n));
-  settings = new SettingsPopover(ctx, notifier, sound);
+  settings = new SettingsPopover(ctx, notifier, sound, dshSetup);
   help = new HelpDialog();
   const day = new DayLauncher(ctx, (el) => root.append(el));
   topbar.addPanelButton(day.button);
@@ -190,7 +192,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   }));
   drawer.onLayoutChange = () => applyLayout();
 
-  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, history, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
+  const components: UiComponent[] = [dshSetup, topbar, sidebar, drawer, terminal, history, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
   onLocaleChange(() => {
     refreshLocalizableDom(root);
     terminal.refreshLocale();
